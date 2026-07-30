@@ -1,5 +1,6 @@
 import os
 import sys
+import asyncio
 
 # Ensure root workspace is in sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -68,7 +69,7 @@ def run_discord_bot(token: str):
                 return
 
             async with message.channel.typing():
-                response = process_query_with_agent(query, user_id=str(message.author.id))
+                response = await asyncio.to_thread(process_query_with_agent, query, str(message.author.id))
             await message.channel.send(response)
 
     client.run(token)

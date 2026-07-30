@@ -5,10 +5,10 @@ from typing import Dict, Any, List
 from src.agent.state import ChatbotState, UserFact
 from src.agent.tools import execute_tool_by_name
 
-# Map các tên kênh và Thread Discord sang ID Tag (<#ID>) chuẩn xác
+# Map các tên kênh Discord sang Category ID Tag (<#ID>) chuẩn xác
 DISCORD_CHANNEL_MAP = {
-    "#🏆-chia-sẻ": "<#1530270278301519974>",
-    "#chia-sẻ": "<#1530270278301519974>",
+    "#🏆-chia-sẻ": "<#1527920185649008660>",
+    "#chia-sẻ": "<#1527920185649008660>",
     "#🙋-hỏi-đáp": "<#1530221989157929090>",
     "#hỏi-đáp": "<#1530221989157929090>",
     "#💬-chung": "<#1527920177390293164>",
@@ -19,12 +19,12 @@ DISCORD_CHANNEL_MAP = {
 }
 
 def format_discord_channel_links(text: str) -> str:
-    """Tự động chuyển đổi tên kênh/thread dạng #tên-kênh sang định dạng link bấm được của Discord (<#ID>)."""
+    """Tự động chuyển đổi tên kênh dạng #tên-kênh sang định dạng link bấm được của Discord (<#ID>)."""
     for name, channel_tag in DISCORD_CHANNEL_MAP.items():
         text = text.replace(name, channel_tag)
     return text
 
-# 1. Tích hợp Gemini LLM SDK (google-genai) & Cấu hình Model tham số lớn
+# 1. Tích hợp Gemini LLM SDK (google-genai) & Cấu hình Model
 try:
     from google import genai
     from google.genai import types
@@ -38,49 +38,110 @@ except Exception:
     llm_client = None
     types = None
 
-# Lấy cấu hình LLM_MODEL từ môi trường (mặc định sử dụng gemma-4-26b-a4b-it)
 LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-26b-a4b-it")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 
-# 2. Tích hợp Graph DB & Memory Store từ Thành viên 1 & 2
+# 2. Tích hợp Graph DB, Extracted Triples & Memory Store
+DATA_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "data"))
+CRAWL_DIR = os.path.join(DATA_DIR, "data", "discord-crawl")
+TRIPLES_PATH = os.path.join(DATA_DIR, "extracted_triples.json")
+
 try:
     from src.graph_db.memory_store import MemoryStore
     from src.graph_db.graph_store import GraphStore
     
-    DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
-    CRAWL_DIR = os.path.join(DATA_DIR, "data", "discord-crawl")
     memory_store_path = os.path.join(DATA_DIR, "memory_store.json")
     graph_store_path = os.path.join(DATA_DIR, "graph_store.json")
     
     memory_engine = MemoryStore(memory_store_path)
     graph_engine = GraphStore(graph_store_path) if os.path.exists(graph_store_path) else None
     
-    triples_path = os.path.join(DATA_DIR, "extracted_triples.json")
-    if graph_engine and os.path.exists(triples_path) and len(graph_engine.graph.nodes) == 0:
-        graph_engine.import_file(triples_path)
+    if graph_engine and os.path.exists(TRIPLES_PATH) and len(graph_engine.graph.nodes) == 0:
+        graph_engine.import_file(TRIPLES_PATH)
         graph_engine.save()
 except Exception:
     memory_engine = None
     graph_engine = None
-    CRAWL_DIR = None
+
+def query_extracted_triples(query: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Tra cứu trực tiếp dữ liệu từ file data/extracted_triples.json bằng thuật toán matching từ khóa."""
+    if not os.path.exists(TRIPLES_PATH):
+        return []
+    
+    query_lower = query.lower().replace("anti gravity", "antigravity")
+    keywords = [w for w in re.findall(r"\w+", query_lower) if len(w) > 1]
+    if not keywords:
+        return []
+        
+    matched_triples = []
+    try:
+        with open(TRIPLES_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            
+        triples = data.get("triples", [])
+        for t in triples:
+            subj = str(t.get("subject", "")).lower()
+            rel = str(t.get("relation", "")).lower()
+            obj = str(t.get("object", "")).lower()
+            
+            score = 0
+            for kw in keywords:
+                if kw in subj:
+                    score += 4
+                if kw in rel:
+                    score += 2
+                if kw in obj:
+                    score += 3
+                    
+            if score > 0:
+                attrs = t.get("attributes", {})
+                proof = attrs.get("proof_document") or attrs.get("thread_id") or "Knowledge Graph"
+                matched_triples.append((score, {
+                    "subject": t.get("subject"),
+                    "relation": t.get("relation"),
+                    "object": t.get("object"),
+                    "proof": proof
+                }))
+                
+        matched_triples.sort(key=lambda x: x[0], reverse=True)
+        return [item[1] for item in matched_triples[:limit]]
+    except Exception:
+        return []
 
 def search_discord_crawl_data(query: str, limit: int = 2) -> List[Dict[str, str]]:
-    """Tra cứu trực tiếp dữ liệu thô từ 285 file discord-crawl khi KG chưa có sẵn."""
+    """Tra cứu thông minh bằng Relevance Scoring trên 285 file crawl thô để tìm đúng Thread cụ thể nhất."""
     if not CRAWL_DIR or not os.path.exists(CRAWL_DIR):
         return []
     
-    query_norm = re.sub(r"\s+", "", query.lower().replace("anti gravity", "antigravity"))
-    keywords = [w for w in query.lower().split() if len(w) > 2]
-    
-    results = []
+    query_lower = query.lower().replace("anti gravity", "antigravity")
+    keywords = [w for w in re.findall(r"\w+", query_lower) if len(w) > 1]
+    if not keywords:
+        return []
+        
+    scored_files = []
     try:
         files = os.listdir(CRAWL_DIR)
         for fname in files:
             if not fname.endswith(".json"):
                 continue
             
-            fname_lower = fname.lower().replace("anti gravity", "antigravity")
-            if any(kw in fname_lower for kw in keywords) or "antigravity" in fname_lower and "antigravity" in query_norm:
+            fname_clean = fname.lower().replace("anti gravity", "antigravity")
+            score = 0
+            
+            for kw in keywords:
+                if kw in fname_clean:
+                    score += 5
+                    
+            if "macos" in query_lower and "macos" in fname_clean:
+                score += 15
+            if "windows" in query_lower and "windows" in fname_clean:
+                score += 15
+            if "antigravity" in query_lower and "antigravity" in fname_clean:
+                score += 15
+            if "git push" in query_lower and "git push" in fname_clean:
+                score += 10
+                
+            if score > 0:
                 fpath = os.path.join(CRAWL_DIR, fname)
                 try:
                     with open(fpath, "r", encoding="utf-8") as f:
@@ -91,102 +152,111 @@ def search_discord_crawl_data(query: str, limit: int = 2) -> List[Dict[str, str]
                     thread_name = channel_info.get("name", fname.replace(".json", ""))
                     messages = data.get("messages", [])
                     first_msg = messages[0].get("content", "") if messages else ""
+                    author_info = messages[0].get("author", {}) if messages else {}
+                    author_name = author_info.get("nickname") or author_info.get("name", "Học viên")
                     
-                    snippet = first_msg[:300].strip() if first_msg else ""
-                    results.append({
+                    msg_lower = first_msg.lower()
+                    for kw in keywords:
+                        if kw in msg_lower:
+                            score += 2
+                            
+                    snippet = first_msg[:400].strip() if first_msg else ""
+                    scored_files.append((score, {
                         "title": thread_name,
                         "thread_id": thread_id,
+                        "author": author_name,
                         "content": snippet,
-                        "citation": f"Thread #{thread_name} (<#{thread_id}>)"
-                    })
-                    if len(results) >= limit:
-                        break
+                        "citation": f"Thread <#{thread_id}> (bởi {author_name})"
+                    }))
                 except Exception:
                     continue
+                    
+        scored_files.sort(key=lambda x: x[0], reverse=True)
+        results = [item[1] for item in scored_files[:limit]]
     except Exception:
-        pass
+        results = []
         
     return results
 
-# Knowledge Base chính thức mở rộng từ BTC
+# Knowledge Base chính thức mở rộng từ BTC với Citation dạng Link Discord Tag
 KNOWLEDGE_BASE = {
     "antigravity_fix": {
         "title": "Fix Lỗi AI Log Antigravity IDE (No new prompts / overview.txt)",
         "keywords": ["antigravity", "anti gravity", "agy", "log_antigravity", "fix antigravity", "lỗi antigravity", "brain dir", "transcript.jsonl"],
-        "content": "Cách sửa lỗi Antigravity IDE báo 'No new prompts' / không tìm thấy transcript.jsonl:\n1. Antigravity IDE lưu log tại thư mục `.system_generated\\logs\\overview.txt` thay vì `transcript.jsonl`.\n2. Cập nhật script `log_antigravity.py` chỉ hướng đọc file `overview.txt` hoặc dùng `agy` CLI lệnh fix.\n3. Xem hướng dẫn chi tiết tại Thread: <#1531490593543553247> (Kênh <#1530270278301519974>).",
-        "citation": "Thread Mẹo Lab 3 (#1531490593543553247) §Kênh #🏆-chia-sẻ"
+        "content": "Cách sửa lỗi Antigravity IDE báo 'No new prompts' / không tìm thấy transcript.jsonl:\n1. Antigravity IDE lưu log tại thư mục `.system_generated\\logs\\overview.txt` thay vì `transcript.jsonl`.\n2. Cập nhật script `log_antigravity.py` chỉ hướng đọc file `overview.txt` hoặc dùng `agy` CLI lệnh fix.\n3. Xem hướng dẫn chi tiết tại Thread: <#1531490593543553247> (Kênh <#1527920185649008660>).",
+        "citation": "Thread <#1531490593543553247>"
     },
     "feedback_vlearn": {
         "title": "Kênh Feedback & Báo Lỗi VLearn / Codelabs",
         "keywords": ["feedback", "góp ý", "báo lỗi vlearn", "báo lỗi codelabs", "qr feedback", "ý kiến vlearn"],
         "content": "Để gửi feedback góp ý hoặc báo lỗi UI/UX trên hệ thống VLearn/Codelabs:\n1. Quét mã QR Feedback tại Thread chính thức: <#1530052915383894107> (do Lab Coach Trần Hoàng Hà đăng tại kênh #🙋-hỏi-đáp).\n2. Hoặc gửi bài phản hồi trực tiếp tại thread 'Feedback, bug report vlearn.dev' <#1530226830920126505>.",
-        "citation": "Thread QR Feedback Vlearn (#1530052915383894107) §Kênh #🙋-hỏi-đáp"
+        "citation": "Thread <#1530052915383894107>"
     },
     "gioi_thieu_khoa_hoc": {
         "title": "Tổng Quan Chương Trình AI Thực Chiến (AI20K Build Phase)",
         "keywords": ["ai thực chiến", "chương trình ai thực chiến", "khóa học ai thực chiến", "giới thiệu chương trình", "khoá học", "chương trình"],
         "content": "Chương trình AI Thực Chiến (Cohort 3 & 4) là khóa huấn luyện phát triển sản phẩm AI thực tế. Học viên được chia nhóm, thực hiện bài tập Lab và vượt qua 6 mốc Checkpoint (CP1 -> CP6) từ lập Canvas, Mockup UI, gọi AI API thật, hoàn thiện AI Spec đến Demo sản phẩm trước Giám khảo.",
-        "citation": "01-de-bai.md & 02-guide.md §Tổng quan"
+        "citation": "Tài liệu 01-de-bai.md & 02-guide.md"
     },
     "cp1": {
         "title": "Checkpoint 1 (Canvas)",
         "keywords": ["cp1", "checkpoint 1", "canvas"],
         "content": "Khóa 3: 10:00 Ngày 1 | Khóa 4: 15:00 Ngày 1.\n- Nội dung: Canvas 7 dòng (hướng, job executor, pain 1 câu, evidence, lát cắt, automation, willing users).",
-        "citation": "04-rubric.md §Phần 3"
+        "citation": "Quy định Rubric 04-rubric.md"
     },
     "cp2": {
         "title": "Checkpoint 2 (Show thứ bấm được)",
         "keywords": ["cp2", "checkpoint 2", "bấm được", "mock", "sketch"],
         "content": "Khóa 3: 12:00 Ngày 1 | Khóa 4: 17:00 Ngày 1.\n- Nội dung: Flow chính bấm đi hết được (Sketch/Mock) + commit đầu tiên trên Repo.",
-        "citation": "04-rubric.md §Phần 3"
+        "citation": "Quy định Rubric 04-rubric.md"
     },
     "cp3": {
         "title": "Checkpoint 3 (AI thật + Đo lượt 1)",
         "keywords": ["cp3", "checkpoint 3", "ai thật", "golden set"],
         "content": "Khóa 3: 16:00 Ngày 1 | Khóa 4: 10:30 Ngày 2.\n- Nội dung: ≥1 lời gọi AI thật + Golden set ≥20 cases + bảng kết quả lượt 1.",
-        "citation": "04-rubric.md §Phần 3"
+        "citation": "Quy định Rubric 04-rubric.md"
     },
     "cp4": {
         "title": "Checkpoint 4 (Chốt tiến độ & Spec)",
         "keywords": ["cp4", "checkpoint 4", "spec", "hạn cứng"],
         "content": "Khóa 3: 17:30 Ngày 1 | Khóa 4: 12:00 Ngày 2.\n- ⏰ HẠN CỨNG SPEC: Commit spec.md trước 23:59 Ngày 1 (Quality bar chốt cố định từ mốc này).",
-        "citation": "01-de-bai.md & 04-rubric.md"
+        "citation": "Quy định Rubric 04-rubric.md"
     },
     "cp5": {
         "title": "Checkpoint 5 (Validation & Dry run)",
         "keywords": ["cp5", "checkpoint 5", "validation", "dry run", "slide"],
         "content": "Khóa 3: 09:00 Ngày 2 | Khóa 4: 14:00 Ngày 2.\n- Nội dung: Log user test ≥5 mẩu có tên + Changelog + Slide final + Dry run 5 phút.",
-        "citation": "04-rubric.md §Phần 3"
+        "citation": "Quy định Rubric 04-rubric.md"
     },
     "cp6": {
         "title": "Checkpoint 6 (Demo chính thức)",
         "keywords": ["cp6", "checkpoint 6", "demo", "thuyết trình"],
         "content": "Khóa 3: 10:00 Ngày 2 | Khóa 4: 15:00 Ngày 2.\n- Nội dung: 5 phút demo + 5 phút Q&A (Giám khảo chạy 1 case lạ tại chỗ).",
-        "citation": "04-rubric.md §Phần 3"
+        "citation": "Quy định Rubric 04-rubric.md"
     },
     "vlearn": {
         "title": "Nền tảng VLearn & Codelabs",
         "keywords": ["vlearn", "codelabs", "nộp bài", "link nộp", "bài tập", "trang web vlearn"],
         "content": "Trang học tập và nộp bài tại https://vlearn.dev và Codelabs tại https://codelabs.vlearn.dev.",
-        "citation": "02-guide.md §Vlearn"
+        "citation": "Hệ thống VLearn"
     },
     "slide_tai_lieu": {
         "title": "Slide Bài Giảng & Tài Nguyên Khóa Học",
         "keywords": ["slide", "bài giảng", "tài liệu", "slide bài giảng", "link slide"],
         "content": "Slide bài giảng và tài liệu học tập được cập nhật trực tiếp tại nền tảng VLearn (https://vlearn.dev) và các thông báo chính thức tại kênh Discord <#1531838822608797747>.",
-        "citation": "02-guide.md §Tài liệu"
+        "citation": "Kênh <#1531838822608797747>"
     },
     "ai-log": {
         "title": "Hướng dẫn Setup AI Log",
-        "keywords": ["ai log", "git push", "pre-push", "lỗi git", "hook", "antigravity", "anti gravity", "agy"],
-        "content": "Cài đặt git pre-push hook theo hướng dẫn trong kênh <#1530270278301519974>. Kiểm tra file overview.txt trong `.system_generated/logs/`. Trên Windows/macOS: đảm bảo chạy lệnh agy cli trong Git Bash/PowerShell.",
-        "citation": "02-guide.md §AI-Log"
+        "keywords": ["cách setup ai log", "hướng dẫn ai log", "pre-push hook setup"],
+        "content": "Cài đặt git pre-push hook theo hướng dẫn chi tiết tại kênh <#1527920185649008660>. Kiểm tra file overview.txt trong `.system_generated/logs/`. Trên Windows/macOS: đảm bảo chạy lệnh agy cli trong Git Bash/PowerShell.",
+        "citation": "Kênh <#1527920185649008660>"
     },
     "form_nghi_hoc": {
         "title": "Form Xin Nghỉ Phép & Chuyên Cần",
         "keywords": ["nghỉ", "xin nghỉ", "vắng mặt", "form nghỉ"],
         "content": "Học viên xin nghỉ phép điền form chính thức tại link BTC và gửi thông báo tới Lab Coach / TA (@LabCoach) để được duyệt.",
-        "citation": "01-de-bai.md §Quy định chuyên cần"
+        "citation": "Quy định Chuyên cần"
     }
 }
 
@@ -282,19 +352,27 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
     
     user_os = next((f["value"] for f in reversed(user_facts) if f.get("fact_type") == "OS"), None)
     
+    # 1. Tra cứu trực tiếp từ data/extracted_triples.json
+    extracted_triples = query_extracted_triples(last_user_msg, limit=4)
+    for t in extracted_triples:
+        retrieved_parts.append(f"🌐 [Knowledge Graph Triple]: ({t['subject']}) -[:{t['relation']}]-> ({t['object']})")
+        citations.append(f"KG ({t['proof']})")
+
+    # 2. Tra cứu Graph Engine (NetworkX) nếu có
     if graph_engine:
-        entities = graph_engine.find_entities(last_user_msg, limit=5)
+        entities = graph_engine.find_entities(last_user_msg, limit=3)
         for entity in entities:
-            traversal = graph_engine.get_context(entity["id"], max_hops=2, limit=5)
+            traversal = graph_engine.get_context(entity["id"], max_hops=2, limit=3)
             for path in traversal:
                 for edge in path.get("edges", []):
                     subj = edge.get("subject")
                     rel = edge.get("relation")
                     obj = edge.get("object")
                     src = edge.get("source", "KGDB")
-                    retrieved_parts.append(f"🌐 [Graph Triple]: ({subj}) -[:{rel}]-> ({obj})")
-                    citations.append(f"KGDB ({src})")
+                    retrieved_parts.append(f"🌐 [Graph Store]: ({subj}) -[:{rel}]-> ({obj})")
+                    citations.append(f"GraphStore ({src})")
 
+    # 3. Tra cứu Knowledge Base chính thức
     normalized_query = last_user_msg.replace("anti gravity", "antigravity")
     for key, data in KNOWLEDGE_BASE.items():
         matched = False
@@ -313,11 +391,12 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
             retrieved_parts.append(f"📌 **{data['title']}**:\n{content}")
             citations.append(data["citation"])
 
+    # 4. Tra cứu trực tiếp 285 file Crawl thô khi chưa có fake CP
     has_fake_cp = any(f"cp{i}" in normalized_query or f"checkpoint {i}" in normalized_query for i in range(7, 20))
     if not has_fake_cp:
         crawl_matches = search_discord_crawl_data(last_user_msg, limit=2)
         for c in crawl_matches:
-            retrieved_parts.append(f"💬 **[Thảo luận Discord]: {c['title']}**\n{c['content']}")
+            retrieved_parts.append(f"💬 **[Thảo luận Discord]: {c['title']}** (bởi {c.get('author', 'Học viên')})\n{c['content']}")
             citations.append(c["citation"])
             
     if not retrieved_parts:
@@ -370,23 +449,22 @@ def guardrail_refusal_node(state: ChatbotState) -> Dict[str, Any]:
 
 def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
     """
-    Node 6: AI Tutor Synthesizer mềm mại, linh hoạt và tổng hợp thông minh bằng Gemini Pro (Model tham số lớn).
+    Node 6: AI Tutor Synthesizer mềm mại, khai thác tri thức từ Knowledge Graph Triples (extracted_triples.json).
     """
     context = state.get("retrieved_context", "")
     citations = state.get("citations", [])
     messages = state.get("messages", [])
     user_query = messages[-1].get("content", "") if messages else ""
     
-    # 1. Gọi Gemini Model tham số lớn (gemini-2.5-pro hoặc gemini-2.5-flash)
     if llm_client:
         try:
             system_prompt = (
-                "Bạn là một Trợ lý AI Học tập (AI Tutor) vô cùng tinh tế, chu đáo và mềm mại cho khóa học AI Thực Chiến.\n"
-                "Nhiệm vụ của bạn:\n"
-                "1. Trả lời đúng trọng tâm câu hỏi của học viên bằng văn phong tự nhiên, lịch sự, ân cần như một người đồng hành thực thụ.\n"
-                "2. Đừng dán khuôn mẫu thô cứng. Hãy tự tổng hợp lại các ý trong NGỮ CẢNH TRA CỨU bên dưới thành một câu trả lời mượt mà, dễ hiểu.\n"
-                "3. Nếu học viên hỏi về cách fix lỗi Antigravity IDE / AI Log, hãy giải thích từng bước rõ ràng, trích dẫn file overview.txt và trỏ tới thread hướng dẫn.\n"
-                "4. Giữ nguyên định dạng link kênh Discord dạng <#ID> nếu có trong ngữ cảnh.\n\n"
+                "Bạn là một Trợ lý AI Học tập (AI Tutor) vô cùng tinh tế, chu đáo và trung thực cho khóa học AI Thực Chiến.\n"
+                "QUY TẮC NGHIÊM NGẶT (HAX G10 GUARDRAIL):\n"
+                "1. CHỈ TRẢ LỜI dựa trên thông tin thực tế có trong NGỮ CẢNH TRA CỨU (Bao gồm Knowledge Graph Triples, Knowledge Base và Thảo luận Discord).\n"
+                "2. Nếu trong NGỮ CẢNH không có giải đáp cho câu hỏi của học viên, hãy thẳng thắn nói 'Chưa tìm thấy căn cứ chính thức của BTC cho câu hỏi này' và hướng dẫn học viên tag @LabCoach.\n"
+                "3. KHI TRÍCH DẪN NGUỒN: Ưu tiên dùng tag link Discord dạng `<#ID_THREAD>` hoặc tài liệu trích dẫn ngắn gọn trong ngữ cảnh. KHÔNG dán tên Server/Guild dài thô.\n"
+                "4. Giữ văn phong lịch sự, ấm áp, rõ ràng.\n\n"
                 f"NGỮ CẢNH DỮ LIỆU TRA CỨU:\n{context}\n\n"
                 f"CÂU HỎI CỦA HỌC VIÊN: {user_query}"
             )
@@ -396,7 +474,6 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 top_p=0.95
             ) if types else None
             
-            # Thử gọi Model tham số lớn (LLM_MODEL) với fallback tự động
             try:
                 llm_response = llm_client.models.generate_content(
                     model=LLM_MODEL,
@@ -423,7 +500,6 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
         except Exception:
             pass
 
-    # 2. Fallback Synthesizer
     if "Chưa tìm thấy căn cứ chính thức" in context:
         response = (
             "🔍 **[Chưa có căn cứ chính thức - HAX G10]**\n"
