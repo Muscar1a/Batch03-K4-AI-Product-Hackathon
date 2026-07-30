@@ -64,14 +64,35 @@ class GroundedAssistant:
 
     async def _classify_intent_node(self, state: AgentState) -> Dict[str, Any]:
         query = state["request"].text.strip()
-        is_tech = any(kw in query.lower() for kw in ["search", "tìm kiếm", "web", "docs", "langgraph", "python", "lỗi", "code"])
-        intent = "TECHNICAL" if is_tech else "LOGISTICS"
+        clean_q = query.lower()
+
+        # Check if query is overly broad/vague (e.g., short generic words without specific scope)
+        broad_terms = {"hướng dẫn", "setup", "cài đặt", "lỗi", "giúp em", "bot", "ai log", "claude", "cp", "nộp bài", "cho em hỏi"}
+        words = clean_q.split()
+        
+        # If query is extremely short (< 3 words) and contains only generic terms, classify as CLARIFICATION
+        is_broad = (len(words) <= 2 and clean_q in broad_terms) or clean_q in ["làm thế nào", "hướng dẫn em", "setup sao", "lỗi rồi"]
+
+        if is_broad:
+            intent = "CLARIFICATION"
+        else:
+            is_tech = any(kw in clean_q for kw in ["search", "tìm kiếm", "web", "docs", "langgraph", "python", "lỗi", "code"])
+            intent = "TECHNICAL" if is_tech else "LOGISTICS"
+
         return {"query": query, "intent": intent, "citations": [], "tools_used": []}
 
     async def _retrieve_claims_node(self, state: AgentState) -> Dict[str, Any]:
+        if state.get("intent") == "CLARIFICATION":
+            return {
+                "citations": [],
+                "combined_context": "",
+                "tools_used": state.get("tools_used", []),
+            }
+
         query = state["query"]
         citations = await self.retriever.search_staff_claims(query)
         tools_used = list(state.get("tools_used", [])) + ["fts_source_messages"]
+
 
         web_citations = []
         if state["intent"] == "TECHNICAL" and not citations:
@@ -117,11 +138,20 @@ class GroundedAssistant:
             escalated = False
         return {"status": status, "escalated": escalated}
 
-
     async def _synthesize_answer_node(self, state: AgentState) -> Dict[str, Any]:
         query = state["query"]
         combined_context = state.get("combined_context", "")
-        status = state.get("status", "BOT_ANSWERED")
+        intent = state.get("intent", "LOGISTICS")
+
+        if intent == "CLARIFICATION":
+            synthesized_text = (
+                "👋 **Bạn có thể đặt câu hỏi cụ thể hơn một chút không?**\n\n"
+                "Câu hỏi hiện tại hơi ngắn hoặc chung chung. Để OdysseyBot có thể tìm đúng thông tin và hỗ trợ bạn tốt nhất, bạn vui lòng cho mình biết rõ hơn nhé:\n"
+                "- 📌 *Bạn đang cần hỗ trợ về công cụ/mục nào?* (VD: `AI LOG`, `Claude Code`, `Quy định nộp bài CP4`, `Điểm danh`...)\n"
+                "- 📌 *Lỗi hoặc thắc mắc cụ thể của bạn là gì?*\n\n"
+                "👉 *Ví dụ câu hỏi rõ ràng*: `!hoi hướng dẫn từng bước setup AI LOG trên VS Code`"
+            )
+            return {"response_text": synthesized_text}
 
         synthesized_text = ""
         if llm_client:
@@ -168,8 +198,8 @@ class GroundedAssistant:
 
         return {"response_text": synthesized_text}
 
-
     async def _log_interaction_node(self, state: AgentState) -> Dict[str, Any]:
+
         req = state["request"]
         try:
             async with aiosqlite.connect(settings.DATABASE_PATH) as db:
