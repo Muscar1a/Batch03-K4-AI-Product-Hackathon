@@ -17,8 +17,8 @@ from odysseybot.ingestion.archive_sync import ProgramArchiveSync
 from odysseybot.ingestion.thread_manifest import ThreadManifest
 
 
-async def send_split_message(destination, text: str, citations_lines: list[str] = None):
-    """Splits and sends long messages safely within Discord's 2000 character limit."""
+async def send_split_message(destination, text: str, citations_lines: list[str] = None, reference_msg: discord.Message = None):
+    """Splits and sends long messages safely within Discord's 2000 character limit and supports native replies."""
     chunk_size = 1900
     
     if len(text) <= chunk_size:
@@ -28,8 +28,16 @@ async def send_split_message(destination, text: str, citations_lines: list[str] 
         for i in range(0, len(text), chunk_size):
             main_chunks.append(text[i:i + chunk_size])
 
+    first_chunk = True
     for chunk in main_chunks:
-        await destination.send(chunk)
+        if first_chunk and reference_msg:
+            try:
+                await reference_msg.reply(chunk, mention_author=False)
+            except Exception:
+                await destination.send(chunk)
+            first_chunk = False
+        else:
+            await destination.send(chunk)
 
     if citations_lines:
         citations_text = "\n\n📌 **Trích dẫn minh bạch (Link nguồn Discord)**:\n" + "\n".join(citations_lines)
@@ -48,6 +56,7 @@ async def send_split_message(destination, text: str, citations_lines: list[str] 
                 await destination.send(cite_chunk)
 
 
+
 def main():
     init_db_sync(settings.DATABASE_PATH)
 
@@ -62,7 +71,7 @@ def main():
 
     assistant = GroundedAssistant()
 
-    async def process_user_query(destination, user_id: str, guild_id: str, channel_id: str, thread_id: str, message_id: str, text: str):
+    async def process_user_query(destination, user_id: str, guild_id: str, channel_id: str, thread_id: str, message_id: str, text: str, reference_msg: discord.Message = None):
         req = AskRequest(
             user_id=user_id,
             guild_id=guild_id,
@@ -74,7 +83,6 @@ def main():
         answer = await assistant.answer(req)
         citation_lines = []
         if answer.citations:
-
             for c in answer.citations:
                 if c.source_type in ["STAFF_DISCORD", "LEARNER_DISCORD"]:
                     citation_lines.append(f"- {c.url} - `{c.title}` ({c.authority})")
@@ -83,10 +91,32 @@ def main():
                 else:
                     citation_lines.append(f"- [{c.title}]({c.url}) ({c.authority})")
         citation_lines = citation_lines if citation_lines else None
-        await send_split_message(destination, answer.text, citation_lines)
+        await send_split_message(destination, answer.text, citation_lines, reference_msg=reference_msg)
 
+    @bot.command(name="hoi")
+    async def hoi_command(ctx: commands.Context, *, query: str = ""):
+        if not query:
+            await ctx.send(
+                "👋 **Xin chào! Mình là OdysseyBot Trợ lý Học viên AI.**\n"
+                "Bạn có thể hỏi quy định, mốc deadline CP1-CP6 hoặc tra cứu bằng lệnh: `!hoi <câu hỏi>`\n"
+                "📌 *Ví dụ*: `!hoi hạn nộp CP4 khóa 4 khi nào?`"
+            )
+            return
+
+        async with ctx.typing():
+            await process_user_query(
+                ctx,
+                user_id=str(ctx.author.id),
+                guild_id=str(ctx.guild.id) if ctx.guild else "dm",
+                channel_id=str(ctx.channel.id),
+                thread_id=str(ctx.thread.id) if hasattr(ctx, "thread") and ctx.thread else None,
+                message_id=str(ctx.message.id),
+                text=query,
+                reference_msg=ctx.message,
+            )
 
     # 17:30 Sync Scheduler Task
+
 
     @tasks.loop(hours=24)
     async def daily_sync_scheduler():
@@ -197,6 +227,7 @@ def main():
                         thread_id=str(message.thread.id) if hasattr(message, "thread") and message.thread else None,
                         message_id=str(message.id),
                         text=query,
+                        reference_msg=message,
                     )
                 return
 
