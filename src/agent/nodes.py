@@ -5,12 +5,12 @@ from typing import Dict, Any, List
 from src.agent.state import ChatbotState, UserFact
 from src.agent.tools import execute_tool_by_name
 
-# Map các tên kênh Discord sang Category ID Tag (<#ID>) chuẩn xác
+# Map các tên kênh Discord sang ID Tag (<#ID>) chính xác của Kênh (Channel ID) để Discord hiển thị link bấm được
 DISCORD_CHANNEL_MAP = {
     "#🏆-chia-sẻ": "<#1527920185649008660>",
     "#chia-sẻ": "<#1527920185649008660>",
-    "#🙋-hỏi-đáp": "<#1530221989157929090>",
-    "#hỏi-đáp": "<#1530221989157929090>",
+    "#🙋-hỏi-đáp": "<#1527920232587333724>",
+    "#hỏi-đáp": "<#1527920232587333724>",
     "#💬-chung": "<#1527920177390293164>",
     "#chung": "<#1527920177390293164>",
     "#📖-bài-học": "<#1531838822608797747>",
@@ -494,7 +494,7 @@ def ticket_confirmation_node(state: ChatbotState) -> Dict[str, Any]:
     response = (
         "📩 **[Hỗ trợ Chuyển tiếp TA / Lab Coach]**\n\n"
         "Mình đã ghi nhận câu hỏi / khó khăn bạn đang gặp phải.\n"
-        "❓ **Bạn có muốn mình tạo một bài đăng (thread) mới trong kênh <#1530221989157929090> để các anh chị TA/Lab Coach (@LabCoach) và các bạn học hỗ trợ trực tiếp không?**\n\n"
+        "❓ Bạn có muốn mình tạo một bài đăng (thread) mới trong kênh #🙋-hỏi-đáp để các anh chị TA/Lab Coach (@LabCoach) và các bạn học hỗ trợ trực tiếp không?\n\n"
         "👉 *Nhập `!hoi tạo bài đăng`, `!hoi tạo ticket` hoặc `!hoi đồng ý` để mình gửi ngay nhé!*"
     )
     return {

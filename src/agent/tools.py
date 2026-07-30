@@ -22,7 +22,7 @@ def ta_escalation_tool(query: str) -> str:
     return (
         "📩 **[Hệ thống Hỗ Trợ Học Viên]**\n"
         f"Đã tạo bài đăng (thread) mới thành công cho nội dung: *'{query}'*!\n"
-        "Bài đăng đã được khởi tạo tại kênh hỗ trợ <#1530221989157929090> (@LabCoach / @TA).\n"
+        "Bài đăng đã được khởi tạo tại kênh hỗ trợ #🙋-hỏi-đáp (@LabCoach / @TA).\n"
         "Các anh chị TA/Coach và các bạn học sẽ trực tiếp phản hồi cho bạn trong thời gian sớm nhất."
     )
 
