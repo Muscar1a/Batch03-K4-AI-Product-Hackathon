@@ -115,7 +115,7 @@ def query_extracted_triples(query: str, limit: int = 5) -> List[Dict[str, Any]]:
         return []
 
 def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]]:
-    """Tra cứu thông minh bằng Relevance Scoring trên 285 file crawl thô để tìm ĐÚNG 1 Thread chuẩn xác nhất."""
+    """Tra cứu thông minh bằng Relevance Scoring & Synonym Expansion trên 285 file crawl thô."""
     if not CRAWL_DIR or not os.path.exists(CRAWL_DIR):
         return []
     
@@ -124,6 +124,21 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
     if not keywords:
         return []
         
+    # Mở rộng từ đồng nghĩa (Synonym Expansion) linh hoạt
+    expanded_keywords = set(keywords)
+    synonym_map = {
+        "nhận": ["tặng", "lấy", "cấp", "xin", "quà", "đăng ký", "khảo sát"],
+        "tool": ["công cụ", "agent", "software", "phần mềm", "quà"],
+        "công cụ": ["tool", "agent"],
+        "api": ["key", "token", "ai log"],
+        "key": ["api", "token", "mã"],
+        "tặng": ["quà", "miễn phí", "free", "khảo sát", "699k"]
+    }
+    for kw in keywords:
+        if kw in synonym_map:
+            for syn in synonym_map[kw]:
+                expanded_keywords.add(syn)
+
     scored_files = []
     try:
         files = os.listdir(CRAWL_DIR)
@@ -134,13 +149,13 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
             fname_clean = fname.lower().replace("anti gravity", "antigravity")
             score = 0
             
-            for kw in keywords:
+            for kw in expanded_keywords:
                 if kw in fname_clean:
-                    score += 5
+                    score += 4
                     
-            if "miễn phí" in query_lower or "free" in query_lower or "công cụ" in query_lower:
-                if "free" in fname_clean or "miễn phí" in fname_clean or "công cụ" in fname_clean:
-                    score += 15
+            if "miễn phí" in query_lower or "free" in query_lower or "công cụ" in query_lower or "tool" in query_lower:
+                if "free" in fname_clean or "miễn phí" in fname_clean or "công cụ" in fname_clean or "tool" in fname_clean or "tặng" in fname_clean:
+                    score += 8
             if "rag" in query_lower and "rag" in fname_clean:
                 score += 15
             if "cấu trúc" in query_lower or "thư mục" in query_lower:
@@ -169,11 +184,11 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
                 author_name = author_info.get("nickname") or author_info.get("name", "Học viên")
                 
                 msg_lower = first_msg.lower()
-                for kw in keywords:
+                for kw in expanded_keywords:
                     if kw in msg_lower:
                         score += 2
                         
-                if score >= 12:
+                if score >= 8:
                     snippet = first_msg[:400].strip() if first_msg else ""
                     scored_files.append((score, {
                         "title": thread_name,
@@ -194,6 +209,18 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
 
 # Knowledge Base chính thức mở rộng từ BTC với Citation dạng Link Discord Tag chính xác
 KNOWLEDGE_BASE = {
+    "nhan_api_key": {
+        "title": "Hướng Dẫn Nhận & Cấu Hình API Key (AI Log & Gemini API Key)",
+        "keywords": ["nhận api key", "api key", "xin api key", "key api", "api log key", "gemini api key", "lấy api key", "cấp api key", "api key btc", "key btc"],
+        "content": "Hướng dẫn nhận và lấy API Key cho khóa học:\n1. **AI Log API Key**: Do BTC cấp riêng qua email đăng ký hoặc thông báo tại kênh thông báo chính thức <#1527920185649008660>. Bạn điền key này vào file `.env` ở mục `AI_LOG_API_KEY`.\n2. **Gemini API Key**: Bạn có thể nhận miễn phí bằng cách truy cập Google AI Studio (https://aistudio.google.com), chọn 'Get API key' và dán vào file `.env` mục `GEMINI_API_KEY`.",
+        "citation": "Kênh <#1527920185649008660> & Hướng dẫn API Key"
+    },
+    "nhan_tool_ai": {
+        "title": "Quy Trình Nhận Tool AI & Sự Kiện Quà Tặng Tặng Tool 699k",
+        "keywords": ["nhận tool ai", "nhận tool", "xin tool ai", "sự kiện tặng tool ai", "tặng tool ai", "quà tặng tool", "khảo sát nhận tool", "tool ai 699k"],
+        "content": "Quy trình nhận công cụ / quà tặng Tool AI trong khóa học:\n1. **Sự kiện Tặng Tool AI (Quà 699k)**: Chia sẻ bởi học viên Trần Thị Hoa Mai. Bạn tham gia hoàn thành bài khảo sát cảm nhận chân thực tại link: https://docs.google.com/forms/d/e/1FAIpQLSeQy23sxAWRQ_PABwAlZy_iREDeQhiDIbEC_KYyWliXsioRag/viewform (Quà tặng Tool AI sẽ nằm ở trang cuối khảo sát).\n2. **Các Tool AI Miễn Phí Khác**: Khóa học khuyến khích học viên sử dụng các công cụ miễn phí như Antigravity IDE (Gemini Code Assist), Cursor (Free Tier), Windsurf Codeium.",
+        "citation": "Thread Sự kiện tặng tool AI (bởi Trần Thị Hoa Mai)"
+    },
     "free_coding_agents": {
         "title": "Các Công Cụ Code Tích Hợp AI Miễn Phí (Free Coding Agents)",
         "keywords": ["công cụ code ai miễn phí", "ai coding miễn phí", "free coding agents", "công cụ ai miễn phí", "code ai miễn phí", "công cụ code tích hợp ai"],
