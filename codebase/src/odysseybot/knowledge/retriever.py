@@ -52,35 +52,45 @@ class KnowledgeRetriever:
                 try:
                     # Check exact author match first
                     for w in words:
+                        # Get exact total count for the author
                         async with db.execute(
-                            """
-                            SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
-                            FROM source_messages sm
-                            WHERE LOWER(sm.author_name) = ?
-                            ORDER BY sm.timestamp DESC
-                            LIMIT ?;
-                            """,
-                            (w.lower(), limit)
-                        ) as cursor:
-                            async for row in cursor:
-                                msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
-                                if msg_id not in seen_ids:
-                                    seen_ids.add(msg_id)
-                                    ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
-                                    target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
-                                    cname = channel_name.strip() if channel_name else "kênh"
-                                    if not cname.startswith("#"):
-                                        cname = f"#{cname}"
-                                    citations.append(
-                                        Citation(
-                                            source_type="STAFF_DISCORD" if is_staff else "LEARNER_DISCORD",
-                                            title=cname,
-                                            url=f"<#{channel_id}>",
-                                            excerpt=content[:600],
-                                            authority=f"bởi {author_name} - https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
-                                            source_timestamp=ts_dt,
+                            "SELECT COUNT(*) FROM source_messages WHERE LOWER(author_name) = ?;",
+                            (w.lower(),)
+                        ) as cnt_cursor:
+                            cnt_row = await cnt_cursor.fetchone()
+                            total_author_msgs = cnt_row[0] if cnt_row else 0
+
+                        if total_author_msgs > 0:
+                            async with db.execute(
+                                """
+                                SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
+                                FROM source_messages sm
+                                WHERE LOWER(sm.author_name) = ?
+                                ORDER BY sm.timestamp DESC
+                                LIMIT 20;
+                                """,
+                                (w.lower(),)
+                            ) as cursor:
+                                async for row in cursor:
+                                    msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
+                                    if msg_id not in seen_ids:
+                                        seen_ids.add(msg_id)
+                                        ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
+                                        target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
+                                        cname = channel_name.strip() if channel_name else "kênh"
+                                        if not cname.startswith("#"):
+                                            cname = f"#{cname}"
+                                        citations.append(
+                                            Citation(
+                                                source_type="STAFF_DISCORD" if is_staff else "LEARNER_DISCORD",
+                                                title=cname,
+                                                url=f"<#{channel_id}>",
+                                                excerpt=f"[Tổng số tin nhắn trong DB của {author_name}: {total_author_msgs}] Nội dung: {content[:600]}",
+                                                authority=f"bởi {author_name} - https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
+                                                source_timestamp=ts_dt,
+                                            )
                                         )
-                                    )
+
 
                     # If no exact author match, use FTS5 MATCH
                     if not citations:
