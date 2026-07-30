@@ -8,9 +8,9 @@ Loại: [x] Tối ưu tính năng có sẵn  [ ] Tính năng mới
 
 * **Job executor**: Học viên đang tham gia khóa học AI Thực Chiến (Cohort 3 & 4) trên kênh Discord chính thức.
 * **Core JTBD**: Xắc nhận nhanh và chính xác thông tin mốc deadline, quy định nộp bài và tài nguyên khóa học mà không phải lội hàng trăm tin nhắn hoặc sợ thông tin sai lệch.
-* **Problem statement**: Học viên thường xuyên bị ngợp thông tin trên Discord (hơn 4.000 tin nhắn và 280+ threads), hay hỏi lại các câu hỏi logistics lặp đi lặp lại (deadline CP, link nộp bài, setup AI-log), dẫn đến nguy cơ nộp trễ hạn hoặc làm sai quy trình.
-* **Evidence** (Mining từ bộ dữ liệu `data/discord-crawl` và khảo sát thực tế):
-  * **Số liệu mining**: `84/285 threads` (29.4%) nằm ở kênh `🙋-hỏi-đáp`. Các thắc mắc tập trung nhiều nhất vào mốc thời gian, lỗi setup AI log, feedback Vlearn và điểm danh.
+* **Problem statement**: Học viên thường xuyên bị ngợp thông tin trên Discord (hơn 6.870 tin nhắn thô và 288+ threads), hay hỏi lại các câu hỏi logistics lặp đi lặp lại (deadline CP, link nộp bài, setup AI-log), dẫn đến nguy cơ nộp trễ hạn hoặc làm sai quy trình.
+* **Evidence** (Mining thực tế qua pipeline ETL từ 289 file JSON trong `data/`):
+  * **Số liệu mining**: Đã quét **6.870 tin nhắn thô**, lọc bỏ **1.725 tin nhắn rác & bot (25,11%)**, trích xuất được **87 Knowledge Triples** & **98 Entities**. Đáng chú ý, `84/285 threads` (29.4%) nằm ở kênh `🙋-hỏi-đáp` với các câu hỏi lặp lại nhiều nhất về mốc thời gian CP, lỗi setup AI log, feedback Vlearn và điểm danh.
   * **Ví dụ nguyên văn (5 quotes)**:
     1. *"Hạn nộp CP2 và CP4 của Khóa 4 chính xác là mấy giờ vậy mọi người?"* (Thread #1530221989157929090)
     2. *"Cho em hỏi link nộp bài Codelabs và Vlearn nằm ở đâu ạ?"* (Thread #1530464868904341584)
@@ -66,6 +66,8 @@ Loại: [x] Tối ưu tính năng có sẵn  [ ] Tính năng mới
 
 * **Automation**: **Conditional Automation**
   * *Lý do theo Cost-of-Error*: Sai mốc deadline gây thiệt hại trực tiếp đến điểm số học viên (sửa rất đắt). Do đó: Case có nguồn rõ ràng $\rightarrow$ Bot trả lời ngay; Case mơ hồ hoặc không có nguồn $\rightarrow$ Từ chối và chuyển giao TA.
+
+* **Cơ chế grounding và memory của prototype**: Triples từ pipeline ETL được lưu trong Knowledge Graph bằng NetworkX và truy vấn tối đa 2 chặng, luôn giữ `source` và `confidence` để Answer Synthesizer tạo trích dẫn. Dynamic Memory chỉ lưu fact theo `user_id` (OS, nhóm, issue), khử trùng lặp và dùng lại ở lượt sau; không chia sẻ fact giữa các học viên.
 
 * **§4b. Nguyên tắc HAX / PAIR đã áp dụng**:
 

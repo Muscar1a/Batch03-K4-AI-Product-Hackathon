@@ -71,28 +71,25 @@ graph TD
 
 ## 3. Chi Tiết Các Hợp Phần Triển Khai (Proposed Components & Code Structure)
 
-### 3.1 Cấu Trúc Thư Mục Dự Án
+### 3.1 Cấu Trúc Thư Mục Dự Án (Tuân theo cấu trúc nộp bài tại README.md)
 ```
 repo/
-├── docs/
-│   └── plan.md                         ← Kế hoạch chi tiết này
-├── spec.md                             ← Spec sản phẩm chốt theo template
-├── src/
-│   ├── main.py                         ← Discord Bot & CLI Interface
-│   ├── etl/
-│   │   ├── discord_cleaner.py          ← Clean dữ liệu Discord thô
-│   │   └── kg_triples_extractor.py     ← Trích xuất Entities & Triples
-│   ├── graph_db/
-│   │   ├── graph_store.py              ← Engine lưu trữ & truy vấn KGDB (NetworkX/SQLite/Kùzu)
-│   │   └── memory_store.py             ← Quản lý bộ nhớ hội thoại dài hạn
-│   ├── agent/
-│   │   ├── state.py                    ← Đón nhận & định nghĩa LangGraph ChatbotState
-│   │   ├── nodes.py                    ← Các Node xử lý trong LangGraph
-│   │   ├── tools.py                    ← Danh sách Tools (Search, Update, API...)
-│   │   └── graph.py                    ← Biên dịch StateGraph thành Runnable Agent
-│   └── config.py                       ← Cấu hình biến môi trường
-└── eval/
-    └── golden_set.json                 ← 20+ kịch bản test
+├── README.md                          ← Thành viên (mã HV + tên) + phân công từng phần
+├── spec.md                            ← AI Spec sản phẩm theo template
+├── demo-slides.pdf                    ← Slide 6 trang thuyết trình demo
+├── codebase/                          ← Mã nguồn Prototype (ghi rõ phần mock/working)
+│   ├── README.md                      ← Hướng dẫn chạy & mô tả phần mock/working
+│   └── src/                           ← Source code chính
+│       ├── main.py                    ← Discord Bot & CLI Interface
+│       ├── config.py                  ← Cấu hình biến môi trường
+│       ├── etl/                       ← Cleaning & Triples extraction pipeline
+│       ├── graph_db/                  ← KG DB engine & Memory store
+│       └── agent/                     ← LangGraph StateMachine, Nodes & Tools
+├── eval/                              ← Golden set + Bảng kết quả đánh giá các lượt
+├── validation/                        ← Feedback log từ vòng User Test
+├── reflection/                        ← Bài thu hoạch cá nhân từng thành viên
+└── docs/
+    └── plan.md                        ← Kế hoạch & kiến trúc chi tiết
 ```
 
 ---
@@ -178,8 +175,8 @@ class ChatbotState(TypedDict):
 
 | Thành viên | Phân vùng Kỹ Thuật (Module Technical) | Thư mục & File Code Phụ Trách | Nhiệm vụ Kỹ Thuật Chuyên Sâu | Nhiệm vụ Non-Tech Chia Đều (1/3) |
 |---|---|---|---|---|
-| **Thành viên 1** | **Data Engine & Triples Mining** | `src/etl/`<br>(`discord_cleaner.py`, `kg_triples_extractor.py`) | - Viết regex & LLM cleaning pipeline lọc 2.658 tin nhắn rác từ `💬-chung` và 285 file `discord-crawl`.<br>- Lập trình module trích xuất Entities & Triples `(Subject, Relation, Object)` bằng Pydantic. | - Phụ trách phần §1 & §2 trong `spec.md` (Evidence Mining, Problem Statement, Bảng Impact 3 ứng viên).<br>- Phỏng vấn & User Test với 2 người thử ngoài nhóm. |
-| **Thành viên 2** | **Graph Database & Dynamic Memory** | `src/graph_db/`<br>(`graph_store.py`, `memory_store.py`) | - Lập trình Knowledge Graph Storage Engine (NetworkX/SQLite) hỗ trợ thuật toán truy vấn đa chặng (2-hop graph traversal).<br>- Xây dựng **Dynamic Memory Engine** tự động trích xuất & persistence User Facts dài hạn vào `data/memory_store.json`. | - Phụ trách phần §3, §4 & §5 trong `spec.md` (Benchmark, Automation cost-of-error, HAX/PAIR, 4 lớp chỗ khó).<br>- Phỏng vấn & User Test với 2 người thử ngoài nhóm. |
-| **Thành viên 3** | **LangGraph Agent Engine & Bot Integration** | `src/agent/`<br>`src/main.py`<br>`eval/` (`golden_set.json`) | - Cài đặt **LangGraph State Machine** (`ChatbotState`, Memory Extractor Node, Router Node, KG Retriever Node, Synthesizer Node).<br>- Lập trình **Tool Call Node & Sub-Agent Dispatcher** (Web Search, Update KB, Git check).<br>- Tích hợp Discord Bot Python (`src/main.py`) & script test tự động Golden set. | - Phụ trách phần §6, §7 & §9 trong `spec.md` (4 đường đi trải nghiệm, Quality bar, Golden set, Changelog).<br>- Soạn Slide 6 trang & hỗ trợ kịch bản Demo. |
+| **Thành viên 1** | **Data Engine & Triples Mining** | `codebase/src/etl/`<br>(`discord_cleaner.py`, `kg_triples_extractor.py`) | - Viết regex & LLM cleaning pipeline lọc 2.658 tin nhắn rác từ `💬-chung` và 285 file `discord-crawl`.<br>- Lập trình module trích xuất Entities & Triples `(Subject, Relation, Object)` bằng Pydantic. | - Phụ trách phần §1 & §2 trong `spec.md` (Evidence Mining, Problem Statement, Bảng Impact 3 ứng viên).<br>- Phỏng vấn & User Test với 2 người thử ngoài nhóm. |
+| **Thành viên 2** | **Graph Database & Dynamic Memory** | `codebase/src/graph_db/`<br>(`graph_store.py`, `memory_store.py`) | - Lập trình Knowledge Graph Storage Engine (NetworkX/SQLite) hỗ trợ thuật toán truy vấn đa chặng (2-hop graph traversal).<br>- Xây dựng **Dynamic Memory Engine** tự động trích xuất & persistence User Facts dài hạn vào `data/memory_store.json`. | - Phụ trách phần §3, §4 & §5 trong `spec.md` (Benchmark, Automation cost-of-error, HAX/PAIR, 4 lớp chỗ khó).<br>- Phỏng vấn & User Test với 2 người thử ngoài nhóm. |
+| **Thành viên 3** | **LangGraph Agent Engine & Bot Integration** | `codebase/src/agent/`<br>`codebase/src/main.py`<br>`eval/` (`golden_set.json`) | - Cài đặt **LangGraph State Machine** (`ChatbotState`, Memory Extractor Node, Router Node, KG Retriever Node, Synthesizer Node).<br>- Lập trình **Tool Call Node & Sub-Agent Dispatcher** (Web Search, Update KB, Git check).<br>- Tích hợp Discord Bot Python (`codebase/src/main.py`) & script test tự động Golden set. | - Phụ trách phần §6, §7 & §9 trong `spec.md` (4 đường đi trải nghiệm, Quality bar, Golden set, Changelog).<br>- Soạn Slide 6 trang & hỗ trợ kịch bản Demo. |
 
 
