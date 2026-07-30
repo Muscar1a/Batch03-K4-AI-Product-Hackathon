@@ -88,14 +88,9 @@ class ArtifactImporter:
 
                 if cursor.rowcount > 0:
                     inserted += 1
-
-                    # Update FTS5 index
-                    await db.execute(
-                        "INSERT OR REPLACE INTO fts_source_messages (id, content, author_name, channel_name) VALUES (?, ?, ?, ?);",
-                        (msg_id, content, author_name, channel_name)
-                    )
                 else:
                     skipped += 1
+
 
             await db.commit()
 

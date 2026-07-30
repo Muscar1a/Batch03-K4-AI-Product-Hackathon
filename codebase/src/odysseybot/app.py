@@ -62,7 +62,21 @@ def main():
 
     assistant = GroundedAssistant()
 
+    async def process_user_query(destination, user_id: str, guild_id: str, channel_id: str, thread_id: str, message_id: str, text: str):
+        req = AskRequest(
+            user_id=user_id,
+            guild_id=guild_id,
+            channel_id=channel_id,
+            thread_id=thread_id,
+            message_id=message_id,
+            text=text,
+        )
+        answer = await assistant.answer(req)
+        citation_lines = [f"- {c.url} - {c.title} ({c.authority})" if c.url.startswith("<#") else f"- [{c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
+        await send_split_message(destination, answer.text, citation_lines)
+
     # 17:30 Sync Scheduler Task
+
     @tasks.loop(hours=24)
     async def daily_sync_scheduler():
         now = datetime.now()
@@ -81,45 +95,22 @@ def main():
     @bot.event
     async def on_ready():
         print(f"✅ OdysseyBot Personal Server Bot ready: {bot.user} (ID: {bot.user.id})")
+        try:
+            synced = await bot.tree.sync()
+            print(f"✅ Synced {len(synced)} slash commands.")
+        except Exception as e:
+            print(f"⚠️ Slash command sync failed: {e}")
+
         if not daily_sync_scheduler.is_running():
             daily_sync_scheduler.start()
         if not daily_digest_scheduler.is_running():
             daily_digest_scheduler.start()
 
-    # Shared query processing helper
-    async def process_user_query(destination, user_id: str, guild_id: str, channel_id: str, thread_id: str, message_id: str, text: str):
-        req = AskRequest(
-            user_id=user_id,
-            guild_id=guild_id,
-            channel_id=channel_id,
-            thread_id=thread_id,
-            message_id=message_id,
-            text=text,
-        )
-        answer = await assistant.answer(req)
-        citation_lines = [f"- {c.url} - {c.title} ({c.authority})" if c.url.startswith("<#") else f"- [{c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
-        await send_split_message(destination, answer.text, citation_lines)
-
-    @bot.command(name="hoi")
-    async def hoi_command(ctx: commands.Context, *, query: str = ""):
-        if not query:
-            await ctx.send(
-                "👋 **Xin chào! Mình là OdysseyBot Trợ lý Học viên AI.**\n"
-                "Bạn có thể hỏi quy định, mốc deadline CP1-CP6 hoặc tra cứu bằng lệnh: `!hoi <câu hỏi>`\n"
-                "📌 *Ví dụ*: `!hoi hạn nộp CP4 khóa 4 khi nào?`"
-            )
-            return
-
-        async with ctx.typing():
-            await process_user_query(
-                ctx,
-                user_id=str(ctx.author.id),
-                guild_id=str(ctx.guild.id) if ctx.guild else "dm",
-                channel_id=str(ctx.channel.id),
-                thread_id=str(ctx.thread.id) if hasattr(ctx, "thread") and ctx.thread else None,
-                message_id=str(ctx.message.id),
-                text=query,
-            )
+    def is_staff_user(interaction: discord.Interaction) -> bool:
+        if not isinstance(interaction.user, discord.Member):
+            return False
+        user_roles = [r.name.lower() for r in interaction.user.roles]
+        return any(sr in user_roles for sr in ["lab coach", "ta", "admin", "organizer", "btc"])
 
     @bot.tree.command(name="hoi", description="Hỏi OdysseyBot về thông tin học tập và quy định")
     async def hoi_slash(interaction: discord.Interaction, query: str):
@@ -140,24 +131,34 @@ def main():
         status_msg = "🟢 **OdysseyBot Health**: OK | Database: Connected | Sync Scheduler: Active"
         await interaction.followup.send(status_msg)
 
-    @bot.tree.command(name="odyssey-sync", description="Kích hoạt đồng bộ dữ liệu ngay lập tức")
+    @bot.tree.command(name="odyssey-sync", description="Kích hoạt đồng bộ dữ liệu ngay lập tức (Staff Only)")
     async def odyssey_sync_slash(interaction: discord.Interaction):
         await interaction.response.defer()
+        if not is_staff_user(interaction):
+            await interaction.followup.send("❌ **Access Denied**: Bạn cần quyền Staff (Lab Coach/TA/Admin) để dùng lệnh này.")
+            return
         sync_job = ProgramArchiveSync()
         res = await sync_job.run_incremental()
         await interaction.followup.send(f"🔄 **Sync Status**: {res.status} | Files: {res.file_count} | Messages: {res.message_count}")
 
-    @bot.tree.command(name="odyssey-digest", description="Tạo bản tin tổng hợp hàng ngày")
+    @bot.tree.command(name="odyssey-digest", description="Tạo bản tin tổng hợp hàng ngày (Staff Only)")
     async def odyssey_digest_slash(interaction: discord.Interaction):
         await interaction.response.defer()
+        if not is_staff_user(interaction):
+            await interaction.followup.send("❌ **Access Denied**: Bạn cần quyền Staff (Lab Coach/TA/Admin) để dùng lệnh này.")
+            return
         await interaction.followup.send("📊 **Bản tin Hàng Ngày**: Đã ghi nhận các câu hỏi tồn đọng trong 24h qua.")
 
-    @bot.tree.command(name="odyssey-add-thread", description="Thêm thread ID thủ công vào theo dõi")
+    @bot.tree.command(name="odyssey-add-thread", description="Thêm thread ID thủ công vào theo dõi (Staff Only)")
     async def odyssey_add_thread_slash(interaction: discord.Interaction, thread_id: str, forum_id: str):
         await interaction.response.defer()
+        if not is_staff_user(interaction):
+            await interaction.followup.send("❌ **Access Denied**: Bạn cần quyền Staff (Lab Coach/TA/Admin) để dùng lệnh này.")
+            return
         manifest = ThreadManifest()
         manifest.add_thread(thread_id=thread_id, parent_forum_id=forum_id, method="manual")
         await interaction.followup.send(f"✅ Đã thêm Thread ID `{thread_id}` thuộc Forum `{forum_id}` vào manifest.")
+
 
     @bot.event
     async def on_message(message: discord.Message):

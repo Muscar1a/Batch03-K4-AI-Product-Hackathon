@@ -13,7 +13,7 @@ from graph_db.graph_store import GraphStore
 
 
 class KnowledgeRetriever:
-    """Queries SQLite source messages, Knowledge Graph DB (graph_store.json), and official docs."""
+    """Queries FTS5 virtual tables, Knowledge Graph DB (graph_store.json), and official docs."""
 
     def __init__(self, db_path: Optional[Path] = None):
         self.db_path = db_path or settings.DATABASE_PATH
@@ -45,27 +45,24 @@ class KnowledgeRetriever:
 
         seen_ids = set()
 
+        # 1. Search SQLite FTS5 Virtual Table (fts_source_messages)
         if self.db_path.exists() and clean_query:
+            fts_term = " OR ".join(words) if words else clean_query
             async with aiosqlite.connect(self.db_path) as db:
-                # Priority 1: Match sub-keywords in content or channel_name, prioritizing longer/richer content
-                search_terms = [" ".join(words)] + sorted(words, key=len, reverse=True)
-                for term in search_terms:
-                    if not term or len(term) < 2:
-                        continue
-                    pattern = f"%{term}%"
+                try:
                     async with db.execute(
                         """
                         SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
-                        FROM source_messages sm
-                        WHERE (sm.content LIKE ? OR sm.channel_name LIKE ?) AND LENGTH(sm.content) > 30
-                        ORDER BY LENGTH(sm.content) DESC, sm.timestamp DESC
+                        FROM fts_source_messages fts
+                        JOIN source_messages sm ON fts.id = sm.id
+                        WHERE fts_source_messages MATCH ? AND LENGTH(sm.content) > 30
+                        ORDER BY bm25(fts_source_messages) ASC, sm.timestamp DESC
                         LIMIT ?;
                         """,
-                        (pattern, pattern, limit - len(citations))
+                        (fts_term, limit)
                     ) as cursor:
                         async for row in cursor:
                             msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
-
                             if msg_id not in seen_ids:
                                 seen_ids.add(msg_id)
                                 ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
@@ -83,9 +80,45 @@ class KnowledgeRetriever:
                                         source_timestamp=ts_dt,
                                     )
                                 )
+                except Exception:
+                    pass
 
+        # 2. Search Knowledge Graph DB (GraphStore NetworkX projection)
+        if len(citations) < limit and self.graph_store and clean_query:
+            try:
+                paths = self.graph_store.get_context(clean_query, max_hops=2, limit=3)
+                for p in paths:
+                    edges_desc = []
+                    for e in p.get("edges", []):
+                        edges_desc.append(f"({e.get('subject')}) -[{e.get('relation')}]-> ({e.get('object')})")
+                    if edges_desc:
+                        snippet = " ; ".join(edges_desc)
+                        citations.append(
+                            Citation(
+                                source_type="STAFF_DISCORD",
+                                title=f"Knowledge Graph (Entity: {p.get('entities', [clean_query])[0]})",
+                                url="file://data/graph_store.json",
+                                excerpt=f"🌐 Context Graph: {snippet}",
+                                authority="Knowledge Graph DB",
+                            )
+                        )
+            except Exception:
+                pass
 
-                    if len(citations) >= limit:
-                        break
+        # 3. Search Official Course Documents
+        if len(citations) < limit and words:
+            for fname, content in self.official_docs:
+                matching_lines = [line for line in content.splitlines() if any(w in line.lower() for w in words)]
+                if matching_lines:
+                    snippet = "\n".join(matching_lines[:6])
+                    citations.append(
+                        Citation(
+                            source_type="OFFICIAL_DOCUMENT",
+                            title=f"Tài liệu chính thức ({fname})",
+                            url=f"file://{fname}",
+                            excerpt=snippet[:450],
+                            authority="BTC AI Thực Chiến",
+                        )
+                    )
 
         return citations

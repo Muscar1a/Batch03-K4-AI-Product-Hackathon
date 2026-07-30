@@ -107,16 +107,14 @@ class GroundedAssistant:
     async def _verify_evidence_node(self, state: AgentState) -> Dict[str, Any]:
         citations = state.get("citations", [])
         has_staff_evidence = any(c.source_type in ["STAFF_DISCORD", "OFFICIAL_DOCUMENT"] for c in citations)
-        if not citations:
-            status = "ESCALATED_TA"
+        if not citations or not has_staff_evidence:
+            status = "ESCALATED"
             escalated = True
-        elif has_staff_evidence:
-            status = "BOT_ANSWERED"
-            escalated = False
         else:
             status = "BOT_ANSWERED"
             escalated = False
         return {"status": status, "escalated": escalated}
+
 
     async def _synthesize_answer_node(self, state: AgentState) -> Dict[str, Any]:
         query = state["query"]

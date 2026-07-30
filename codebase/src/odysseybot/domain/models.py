@@ -19,9 +19,11 @@ class AskRequest:
 class Citation:
     source_type: Literal[
         "STAFF_DISCORD",
+        "LEARNER_DISCORD",
         "OFFICIAL_DOCUMENT",
         "TECHNICAL_WEB",
     ]
+
     title: str
     url: str
     excerpt: str
