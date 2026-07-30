@@ -455,7 +455,7 @@ def guardrail_refusal_node(state: ChatbotState) -> Dict[str, Any]:
 
 def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
     """
-    Node 6: AI Tutor Synthesizer minh bạch (HAX G2) - Tuyệt đối không sinh chuỗi placeholder thô dạng <#ID_THREAD>.
+    Node 6: AI Tutor Synthesizer minh bạch (HAX G2) - Lọc triệt để chuỗi placeholder thô.
     """
     context = state.get("retrieved_context", "")
     raw_citations = state.get("citations", [])
@@ -482,7 +482,7 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 "QUY TẮC PHÂN LOẠI NGUỒN VÀ TRÁNH PLACEHOLDER (HAX G2 TRANSPARENCY):\n"
                 "1. NẾU NGUỒN LÀ BÀI VIẾT / CHIA SẺ CỦA HỌC VIÊN:\n"
                 "   -> BẮT BUỘC mở đầu bằng: 'Dưới đây là phần chia sẻ kinh nghiệm của học viên [Tên Học Viên trong ngữ cảnh]...'\n"
-                "   -> TUYỆT ĐỐI KHÔNG ghi các từ placeholder mẫu như '<#ID_THREAD>' hay '<#ID...>' vào thân bài trả lời.\n"
+                "   -> TUYỆT ĐỐI KHÔNG ghi các từ placeholder mẫu như '<#ID_THREAD>' hay '<#ID...>' hay '[Tên Học Viên]' vào thân bài trả lời.\n"
                 "2. NẾU NGUỒN LÀ TÀI LIỆU CHÍNH THỨC CỦA BTC HOẶC LAB COACH:\n"
                 "   -> Trình bày trực tiếp là quy định/thông tin chính thức từ BTC.\n"
                 "3. CHỈ NÓI 'Chưa tìm thấy căn cứ chính thức' KHI VÀ CHỈ KHI trong ngữ cảnh hoàn toàn KHÔNG CÓ dữ liệu.\n"
@@ -510,8 +510,7 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 )
                 
             if llm_response and llm_response.text:
-                # Làm sạch các chuỗi placeholder thô nếu LLM lỡ sinh ra
-                clean_text = llm_response.text.strip().replace("<#ID_THREAD>", "").replace("<#ID...>", "")
+                clean_text = llm_response.text.strip().replace("<#ID_THREAD>", "").replace("<#ID...>", "").replace("[Tên Học Viên]", "")
                 if best_citation and best_citation != "Không có nguồn":
                     raw_resp = f"{clean_text}\n\n📌 **Trích dẫn minh bạch**:\n- *Nguồn chính xác: {best_citation}*"
                 else:
