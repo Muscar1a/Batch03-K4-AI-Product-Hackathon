@@ -86,7 +86,7 @@ def main():
             )
             answer = await assistant.answer(req)
             
-        citation_lines = [f"- [Nguồn chính xác: {c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
+        citation_lines = [f"- [{c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
         await send_split_message(ctx, answer.text, citation_lines)
 
     @bot.event
@@ -114,9 +114,10 @@ def main():
                     )
                     answer = await assistant.answer(req)
 
-                citation_lines = [f"- [Nguồn chính xác: {c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
+                citation_lines = [f"- [{c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
                 await send_split_message(message.channel, answer.text, citation_lines)
                 return
+
 
         await bot.process_commands(message)
 

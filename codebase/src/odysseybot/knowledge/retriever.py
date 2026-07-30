@@ -40,16 +40,13 @@ class KnowledgeRetriever:
         citations: List[Citation] = []
         clean_query = query.lower().strip()
         
-        # Stopwords to filter out generic query words
-        stopwords = {"hướng", "dẫn", "tôi", "cho", "em", "hỏi", "với", "setup", "cài", "đặt", "là", "gì", "khi", "nào"}
+        stopwords = {"hướng", "dẫn", "tôi", "cho", "em", "hỏi", "với", "setup", "cài", "đặt", "là", "gì", "khi", "nào", "ở", "trên"}
         words = [w for w in re.sub(r"[^\w\s]", " ", clean_query).split() if len(w) >= 2 and w not in stopwords]
 
         seen_ids = set()
 
-        # 1. Search Database Source Messages (Highest precision for specific technical & Discord topics like "AI LOG")
         if self.db_path.exists() and clean_query:
             clean_text = re.sub(r"[^\w\s]", " ", clean_query).strip()
-            # Try full phrase search first
             phrase_keywords = [clean_text] if clean_text else []
             if words:
                 phrase_keywords.append(" ".join(words))
@@ -73,10 +70,14 @@ class KnowledgeRetriever:
                                 seen_ids.add(msg_id)
                                 ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
                                 target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
+                                # Clean channel name to produce pure #channel-name
+                                cname = channel_name.strip() if channel_name else "kênh"
+                                if not cname.startswith("#"):
+                                    cname = f"#{cname}"
                                 citations.append(
                                     Citation(
                                         source_type="STAFF_DISCORD",
-                                        title=f"Thread {channel_name}",
+                                        title=cname,
                                         url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
                                         excerpt=content[:450],
                                         authority=f"bởi {author_name}",
@@ -84,77 +85,42 @@ class KnowledgeRetriever:
                                     )
                                 )
 
-                # Fallback to key specific terms (e.g. "log", "antigravity", "claude")
-                if len(citations) < limit and words:
+                # If specific matching phrase found, do NOT include fuzzy keyword noise
+                if not citations and words:
                     for kw in sorted(words, key=len, reverse=True):
+                        if len(kw) < 4:
+                            continue
                         like_pattern = f"%{kw}%"
                         async with db.execute(
                             """
                             SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
                             FROM source_messages sm
-                            WHERE sm.content LIKE ? OR sm.channel_name LIKE ?
+                            WHERE sm.content LIKE ?
                             ORDER BY sm.timestamp DESC
                             LIMIT ?;
                             """,
-                            (like_pattern, like_pattern, limit - len(citations))
+                            (like_pattern, limit)
                         ) as cursor:
                             async for row in cursor:
                                 msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp = row
-                                if msg_id not in seen_ids:
+                                if msg_id not in seen_ids and kw.lower() in content.lower():
                                     seen_ids.add(msg_id)
                                     ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
                                     target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
+                                    cname = channel_name.strip() if channel_name else "kênh"
+                                    if not cname.startswith("#"):
+                                        cname = f"#{cname}"
                                     citations.append(
                                         Citation(
                                             source_type="STAFF_DISCORD",
-                                            title=f"Thread {channel_name}",
+                                            title=cname,
                                             url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
                                             excerpt=content[:450],
                                             authority=f"bởi {author_name}",
                                             source_timestamp=ts_dt,
                                         )
                                     )
-
-
-                        if len(citations) >= limit:
+                        if citations:
                             break
-
-        # 2. Search Knowledge Graph DB (GraphStore traversal)
-        if len(citations) < limit and self.graph_store and clean_query:
-            try:
-                paths = self.graph_store.get_context(clean_query, max_hops=2, limit=3)
-                for p in paths:
-                    edges_desc = []
-                    for e in p.get("edges", []):
-                        edges_desc.append(f"({e.get('subject')}) -[{e.get('relation')}]-> ({e.get('object')})")
-                    if edges_desc:
-                        snippet = " ; ".join(edges_desc)
-                        citations.append(
-                            Citation(
-                                source_type="STAFF_DISCORD",
-                                title=f"Knowledge Graph (Triples: {p.get('entities', [clean_query])[0]})",
-                                url="file://data/graph_store.json",
-                                excerpt=f"🌐 Context Graph: {snippet}",
-                                authority="Knowledge Graph DB",
-                            )
-                        )
-            except Exception:
-                pass
-
-        # 3. Search Official Course Documents (as secondary or general context)
-        if len(citations) < limit and words:
-            for fname, content in self.official_docs:
-                matching_lines = [line for line in content.splitlines() if any(w in line.lower() for w in words)]
-                if matching_lines:
-                    snippet = "\n".join(matching_lines[:6])
-                    citations.append(
-                        Citation(
-                            source_type="OFFICIAL_DOCUMENT",
-                            title=f"Tài liệu chính thức ({fname})",
-                            url=f"file://{fname}",
-                            excerpt=snippet[:450],
-                            authority="BTC AI Thực Chiến",
-                        )
-                    )
 
         return citations
