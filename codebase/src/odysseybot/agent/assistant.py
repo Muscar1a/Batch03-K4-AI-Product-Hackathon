@@ -127,18 +127,18 @@ class GroundedAssistant:
         if llm_client:
             try:
                 system_prompt = (
-                    "Bạn là Trợ lý AI Học viên (OdysseyBot) chu đáo, chính xác và minh bạch.\n"
-                    "Nhiệm vụ: Trả lời câu hỏi học viên dựa trên NGỮ CẢNH DỮ LIỆU bên dưới.\n"
-                    "Quy tắc tuyệt đối:\n"
-                    "1. Phân định rõ ràng giữa Thông tin chính thức (Ban Tổ Chức/TA) và Ý kiến cộng đồng học viên:\n"
-                    "   - Nếu có phát ngôn từ Ban Tổ Chức/TA: Trích dẫn và trả lời khẳng định.\n"
-                    "   - Nếu KHÔNG có thông tin chính thức từ BTC/TA nhưng có kinh nghiệm/hướng dẫn hữu ích từ học viên khác được cộng đồng đón nhận: Hãy tóm tắt lại các mẹo/hướng dẫn đó và nêu rõ 'Dựa trên kinh nghiệm chia sẻ từ học viên [Tên Học Viên] trong cộng đồng...'.\n"
-                    "2. Không tự ý chèn các đoạn link thô dạng file:// hay URL dài trong phần văn bản. Phần link trích dẫn đính kèm sẽ do hệ thống tự động thêm ở cuối.\n"
-                    "3. Không bịa đặt thông tin, deadline hay quy định.\n\n"
-                    f"NGỮ CẢNH:\n{combined_context}\n\n"
+                    "Bạn là OdysseyBot - Trợ lý AI Học viên chính thức của khóa học.\n"
+                    "Nhiệm vụ: Trả lời ngắn gọn, tổng hợp thông tin mượt mà và trực tiếp cho câu hỏi của học viên dựa trên NGỮ CẢNH DỮ LIỆU.\n\n"
+                    "Quy tắc tổng hợp và hành văn tuyệt đối:\n"
+                    "1. Viết thành văn bản tổng hợp mượt mà (cohesive synthesis). Tuyệt đối KHÔNG xuất lại danh sách các block nguyên văn dạng '📌 [Nguồn...]' hay '📌 [Ý kiến...]'.\n"
+                    "2. Phân định rõ ràng nguồn tin:\n"
+                    "   - Nếu có thông tin từ Ban Tổ Chức/TA: Trả lời bằng giọng văn khẳng định chính thức.\n"
+                    "   - Nếu KHÔNG có thông tin chính thức từ BTC/TA nhưng có chia sẻ/hướng dẫn từ học viên khác: Hãy tổng hợp lại mẹo/hướng dẫn đó và nêu rõ 'Dựa trên chia sẻ từ học viên trong cộng đồng...'.\n"
+                    "3. Trả lời đúng trọng tâm câu hỏi. Nếu trong ngữ cảnh có tin nhắn tán xàm/không liên quan (ví dụ: 'bạn ở đây để làm gì'), hãy bỏ qua hoàn toàn.\n"
+                    "4. Không tự chèn bất kỳ link thô file:// hay URL dài nào vào thân văn bản.\n\n"
+                    f"NGỮ CẢNH DỮ LIỆU:\n{combined_context}\n\n"
                     f"CÂU HỎI HỌC VIÊN: {query}"
                 )
-
 
                 config = types.GenerateContentConfig(temperature=0.0) if types else None
                 llm_resp = await asyncio.to_thread(
@@ -154,7 +154,11 @@ class GroundedAssistant:
 
         if not synthesized_text:
             if combined_context:
-                synthesized_text = f"🤖 **[Trợ lý AI - Thông tin tra cứu]**\n\n{combined_context}"
+                synthesized_text = (
+                    "ℹ️ **[Thông tin tổng hợp từ cộng đồng]**\n\n"
+                    "Hiện chưa có quy định chính thức từ BTC về câu hỏi này, tuy nhiên dưới đây là các trao đổi liên quan trong cộng đồng học viên:\n\n"
+                    f"{combined_context}"
+                )
             else:
                 synthesized_text = (
                     "❓ **[Chưa có thông tin chính thức]**\n"
@@ -163,6 +167,7 @@ class GroundedAssistant:
                 )
 
         return {"response_text": synthesized_text}
+
 
     async def _log_interaction_node(self, state: AgentState) -> Dict[str, Any]:
         req = state["request"]

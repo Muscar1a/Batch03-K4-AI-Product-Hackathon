@@ -109,26 +109,31 @@ class KnowledgeRetriever:
 
         # 3. Search Official Course Documents (Strict Heading / Term Match)
         if len(citations) < limit and words:
+            # Exclude meta spec/rubric files unless query explicitly asks about spec, de bai, or rubric
+            is_asking_meta_spec = any(w in clean_query for w in ["spec", "đề bài", "rubric", "chấm điểm", "khung"])
             for fname, content in self.official_docs:
+                if not is_asking_meta_spec and fname in ["01-de-bai.md", "02-guide.md", "03-template-ai-spec.md", "04-rubric.md", "spec.md"]:
+                    continue
+
                 matching_lines = []
                 for line in content.splitlines():
                     line_lower = line.lower()
-                    # Require at least 2 key terms or exact phrase in line
                     matched_count = sum(1 for w in words if w in line_lower)
-                    if matched_count >= 2 and len(line.strip()) > 10:
+                    if matched_count >= 2 and len(line.strip()) > 15:
                         matching_lines.append(line.strip())
 
                 if matching_lines:
-                    snippet = "\n".join(matching_lines[:4])
+                    snippet = "\n".join(matching_lines[:3])
                     citations.append(
                         Citation(
                             source_type="OFFICIAL_DOCUMENT",
                             title=f"Tài liệu chính thức ({fname})",
                             url=f"file://{fname}",
-                            excerpt=snippet[:450],
+                            excerpt=snippet[:350],
                             authority="BTC AI Thực Chiến",
                         )
                     )
+
 
         return citations
 
