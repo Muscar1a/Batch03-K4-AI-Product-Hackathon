@@ -76,10 +76,10 @@ class KnowledgeRetriever:
                                 citations.append(
                                     Citation(
                                         source_type="STAFF_DISCORD",
-                                        title=f"Kênh #{channel_name} (MsgID: {msg_id})",
+                                        title=f"Thread {channel_name}",
                                         url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
                                         excerpt=content[:450],
-                                        authority=f"Tác giả: {author_name} (Thread/MsgID: {channel_id}/{msg_id})",
+                                        authority=f"bởi {author_name}",
                                         source_timestamp=ts_dt,
                                     )
                                 )
@@ -107,13 +107,14 @@ class KnowledgeRetriever:
                                     citations.append(
                                         Citation(
                                             source_type="STAFF_DISCORD",
-                                            title=f"Kênh #{channel_name} (MsgID: {msg_id})",
+                                            title=f"Thread {channel_name}",
                                             url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
                                             excerpt=content[:450],
-                                            authority=f"Tác giả: {author_name} (Thread/MsgID: {channel_id}/{msg_id})",
+                                            authority=f"bởi {author_name}",
                                             source_timestamp=ts_dt,
                                         )
                                     )
+
 
                         if len(citations) >= limit:
                             break
