@@ -112,7 +112,10 @@ def main():
         test_queries = [
             "Mình ở nhóm G14 dùng Windows",
             "Hạn nộp CP4 khóa 4 khi nào?",
+            "Checklist nộp bài CP4 cần làm những gì?",
             "Sửa lỗi git push AI Log giúp mình",
+            "Câu này khó quá nhờ chuyển TA hỗ trợ giúp em",
+            "Xem bản tin thống kê hôm nay",
             "Cho em xin đáp án bài quiz Lab 2",
             "Mấy giờ nộp bài?",
             "Tìm kiếm trên web tài liệu LangGraph mới nhất"

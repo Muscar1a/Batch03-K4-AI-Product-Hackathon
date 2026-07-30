@@ -63,13 +63,19 @@ except Exception:
     memory_engine = None
     graph_engine = None
 
+STOP_WORDS = {
+    "trong", "có", "mát", "không", "là", "thế", "nào", "mình", "bạn", "với", "cho",
+    "được", "này", "đó", "gì", "ở", "về", "vẫn", "phải", "như", "mấy", "bao",
+    "nhiêu", "tại", "sao", "thì", "cái", "ai", "bên", "rồi", "lại", "đang", "cũng", "đều"
+}
+
 def query_extracted_triples(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     """Tra cứu trực tiếp dữ liệu từ file data/extracted_triples.json bằng thuật toán matching từ khóa."""
     if not os.path.exists(TRIPLES_PATH):
         return []
     
     query_lower = query.lower().replace("anti gravity", "antigravity")
-    keywords = [w for w in re.findall(r"\w+", query_lower) if len(w) > 1]
+    keywords = [w for w in re.findall(r"\w+", query_lower) if len(w) > 1 and w not in STOP_WORDS]
     if not keywords:
         return []
         
@@ -93,7 +99,7 @@ def query_extracted_triples(query: str, limit: int = 5) -> List[Dict[str, Any]]:
                 if kw in obj:
                     score += 3
                     
-            if score > 0:
+            if score >= 5:
                 attrs = t.get("attributes", {})
                 proof = attrs.get("proof_document") or attrs.get("thread_id") or "Knowledge Graph"
                 matched_triples.append((score, {
@@ -114,7 +120,7 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
         return []
     
     query_lower = query.lower().replace("anti gravity", "antigravity")
-    keywords = [w for w in re.findall(r"\w+", query_lower) if len(w) > 1]
+    keywords = [w for w in re.findall(r"\w+", query_lower) if len(w) > 1 and w not in STOP_WORDS]
     if not keywords:
         return []
         
@@ -149,25 +155,25 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
             if "git push" in query_lower and "git push" in fname_clean:
                 score += 10
                 
-            if score > 0:
-                fpath = os.path.join(CRAWL_DIR, fname)
-                try:
-                    with open(fpath, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-                    
-                    channel_info = data.get("channel", {})
-                    thread_id = channel_info.get("id")
-                    thread_name = channel_info.get("name", fname.replace(".json", ""))
-                    messages = data.get("messages", [])
-                    first_msg = messages[0].get("content", "") if messages else ""
-                    author_info = messages[0].get("author", {}) if messages else {}
-                    author_name = author_info.get("nickname") or author_info.get("name", "Học viên")
-                    
-                    msg_lower = first_msg.lower()
-                    for kw in keywords:
-                        if kw in msg_lower:
-                            score += 2
-                            
+            fpath = os.path.join(CRAWL_DIR, fname)
+            try:
+                with open(fpath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                channel_info = data.get("channel", {})
+                thread_id = channel_info.get("id")
+                thread_name = channel_info.get("name", fname.replace(".json", ""))
+                messages = data.get("messages", [])
+                first_msg = messages[0].get("content", "") if messages else ""
+                author_info = messages[0].get("author", {}) if messages else {}
+                author_name = author_info.get("nickname") or author_info.get("name", "Học viên")
+                
+                msg_lower = first_msg.lower()
+                for kw in keywords:
+                    if kw in msg_lower:
+                        score += 2
+                        
+                if score >= 12:
                     snippet = first_msg[:400].strip() if first_msg else ""
                     scored_files.append((score, {
                         "title": thread_name,
@@ -176,8 +182,8 @@ def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]
                         "content": snippet,
                         "citation": f"Thread <#{thread_id}> (bởi {author_name})"
                     }))
-                except Exception:
-                    continue
+            except Exception:
+                continue
                     
         scored_files.sort(key=lambda x: x[0], reverse=True)
         results = [item[1] for item in scored_files[:limit]]
@@ -307,7 +313,11 @@ def memory_extractor_and_router_node(state: ChatbotState) -> Dict[str, Any]:
         if group_match:
             extracted_facts.append({"fact_type": "GROUP", "value": group_match.group(0).upper(), "timestamp": "now"})
 
-    out_keywords = ["đáp án", "giải hộ", "viết hộ", "cho xin code", "làm hộ", "bỏ qua quy định", "viết code", "code react"]
+    out_keywords = [
+        "đáp án", "giải hộ", "viết hộ", "cho xin code", "làm hộ", "bỏ qua quy định", "viết code", "code react",
+        "mặt trời", "mát không", "thời tiết", "ăn gì", "chữa thất tình", "yêu đương", "bóng đá", "thể thao",
+        "tin tức", "xổ số", "giá vàng", "chứng khoán", "game", "chơi game", "hát", "thơ"
+    ]
     if any(kw in last_user_msg for kw in out_keywords):
         return {
             "intent": "OUT_OF_SCOPE",
@@ -338,6 +348,24 @@ def memory_extractor_and_router_node(state: ChatbotState) -> Dict[str, Any]:
         return {
             "intent": "EXECUTE_TOOL",
             "target_tool": "vlearn_api_tool",
+            "extracted_user_facts": extracted_facts
+        }
+    if "checklist" in last_user_msg or "cần làm gì" in last_user_msg or "cần chuẩn bị gì" in last_user_msg:
+        return {
+            "intent": "EXECUTE_TOOL",
+            "target_tool": "cp_checklist_tool",
+            "extracted_user_facts": extracted_facts
+        }
+    if "báo ta" in last_user_msg or "chuyển ta" in last_user_msg or "gọi ta" in last_user_msg or "gọi coach" in last_user_msg or "cần ta hỗ trợ" in last_user_msg:
+        return {
+            "intent": "EXECUTE_TOOL",
+            "target_tool": "ta_escalation_tool",
+            "extracted_user_facts": extracted_facts
+        }
+    if "bản tin" in last_user_msg or "top faq" in last_user_msg or "thống kê hôm nay" in last_user_msg:
+        return {
+            "intent": "EXECUTE_TOOL",
+            "target_tool": "daily_digest_tool",
             "extracted_user_facts": extracted_facts
         }
 
@@ -443,14 +471,17 @@ def clarification_node(state: ChatbotState) -> Dict[str, Any]:
 
 def guardrail_refusal_node(state: ChatbotState) -> Dict[str, Any]:
     response = (
-        "⚠️ **[Từ chối - Ngoài thẩm quyền HAX G8]**\n"
-        "Trợ lý chỉ hỗ trợ tra cứu logistics, deadline và quy định khóa học.\n"
-        "Bot không hỗ trợ giải bài tập cá nhân hay tự động viết code.\n"
-        "Bạn hãy tham khảo slide bài giảng hoặc thảo luận cùng nhóm tại kênh <#1530221989157929090> nhé!"
+        "☀️ **[Trợ lý Học viên AI - Ngoài Phạm Vi Khóa Học]**\n\n"
+        "Chào bạn, mình rất hiểu sự tò mò của bạn!\n"
+        "Tuy nhiên, mình là **Trợ lý Học viên chuyên trách cho khóa học AI Thực Chiến**, nên chỉ hỗ trợ các thông tin nằm trong phạm vi khóa học như:\n"
+        "1. 📅 **Hạn nộp & Yêu cầu Checkpoint**: CP1 đến CP6 (Ví dụ: `!hoi hạn nộp CP4 khi nào?`)\n"
+        "2. 🛠️ **Sửa lỗi kỹ thuật**: Lỗi AI Log, Git pre-push hook, Antigravity IDE, RAG...\n"
+        "3. 📖 **Quy định & Tài liệu**: VLearn, Codelabs, Slide bài giảng, Form xin nghỉ phép...\n\n"
+        "Nếu bạn có bất kỳ thắc mắc nào liên quan đến bài học và quy định trên, mình luôn sẵn sàng đồng hành hỗ trợ nhé! 😊"
     )
     return {
         "final_response": format_discord_channel_links(response),
-        "citations": ["HAX G8 Scope Guardrail"]
+        "citations": []
     }
 
 def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
@@ -466,14 +497,12 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
     
     best_citation = None
     thread_citations = [c for c in citations if "Thread <#" in c]
-    kb_citations = [c for c in citations if "Thread <#" not in c and "Không có nguồn" not in c]
+    kb_citations = [c for c in citations if "Thread <#" not in c and "Không có nguồn" not in c and "Guardrail" not in c]
     
     if thread_citations:
         best_citation = thread_citations[0]
     elif kb_citations:
         best_citation = kb_citations[0]
-    elif citations:
-        best_citation = citations[0]
 
     if llm_client:
         try:
@@ -510,9 +539,8 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 )
                 
             if llm_response and llm_response.text:
-                # Làm sạch các chuỗi placeholder thô nếu LLM lỡ sinh ra
                 clean_text = llm_response.text.strip().replace("<#ID_THREAD>", "").replace("<#ID...>", "")
-                if best_citation and best_citation != "Không có nguồn":
+                if best_citation and best_citation != "Không có nguồn" and "Guardrail" not in best_citation:
                     raw_resp = f"{clean_text}\n\n📌 **Trích dẫn minh bạch**:\n- *Nguồn chính xác: {best_citation}*"
                 else:
                     raw_resp = clean_text
@@ -530,11 +558,11 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
             "📩 Mình đã ghi nhận và chuyển câu hỏi tới các anh chị **Lab Coach / TA** (@LabCoach) để hỗ trợ bạn sớm nhất nhé!"
         )
     else:
-        citation_str = f"- *Nguồn chính xác: {best_citation}*" if best_citation else ""
+        citation_str = f"\n\n📌 **Trích dẫn minh bạch**:\n- *Nguồn chính xác: {best_citation}*" if best_citation and "Guardrail" not in best_citation else ""
         response = (
             f"🤖 **[Trợ lý Học viên AI]**\n\n"
-            f"{context}\n\n"
-            f"📌 **Trích dẫn minh bạch**:\n{citation_str}"
+            f"{context}"
+            f"{citation_str}"
         )
         
     return {
