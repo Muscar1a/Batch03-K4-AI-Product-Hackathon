@@ -106,12 +106,19 @@ class KnowledgeRetriever:
             except Exception:
                 pass
 
-        # 3. Search Official Course Documents
+        # 3. Search Official Course Documents (Strict Heading / Term Match)
         if len(citations) < limit and words:
             for fname, content in self.official_docs:
-                matching_lines = [line for line in content.splitlines() if any(w in line.lower() for w in words)]
+                matching_lines = []
+                for line in content.splitlines():
+                    line_lower = line.lower()
+                    # Require at least 2 key terms or exact phrase in line
+                    matched_count = sum(1 for w in words if w in line_lower)
+                    if matched_count >= 2 and len(line.strip()) > 10:
+                        matching_lines.append(line.strip())
+
                 if matching_lines:
-                    snippet = "\n".join(matching_lines[:6])
+                    snippet = "\n".join(matching_lines[:4])
                     citations.append(
                         Citation(
                             source_type="OFFICIAL_DOCUMENT",
@@ -123,3 +130,4 @@ class KnowledgeRetriever:
                     )
 
         return citations
+

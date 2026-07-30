@@ -95,9 +95,11 @@ class GroundedAssistant:
         all_citations = citations + web_citations
         context_blocks = []
         for c in all_citations:
-            context_blocks.append(f"📌 [{c.title}]: {c.excerpt}")
+            authority_label = "[Nguồn chính thức - Ban Tổ Chức/TA]" if c.source_type in ["STAFF_DISCORD", "OFFICIAL_DOCUMENT"] else f"[Ý kiến cộng đồng học viên - {c.authority}]"
+            context_blocks.append(f"📌 {authority_label} ({c.title}): {c.excerpt}")
 
         combined_context = "\n\n".join(context_blocks)
+
         return {
             "citations": all_citations,
             "combined_context": combined_context,
