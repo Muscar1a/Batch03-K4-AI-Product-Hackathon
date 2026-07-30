@@ -62,6 +62,41 @@ class GraphStoreTests(unittest.TestCase):
         paths = store.traverse("Guide", direction="in")
         self.assertEqual(paths[0]["entities"], ["guide", "topic"])
 
+    def test_member1_payload_preserves_entities_metadata_and_citations(self):
+        input_path = Path(self.temp_dir.name) / "extracted_triples.json"
+        input_path.write_text(
+            json.dumps(
+                {
+                    "metadata": {"extracted_triples_count": 1},
+                    "entities": [{"name": "AI_Log", "category": "TECH_ISSUE", "attributes": {"kind": "bug"}}],
+                    "triples": [
+                        {
+                            "subject": "AI_Log",
+                            "relation": "REQUIRES_HOOK",
+                            "object": "git pre-push hook",
+                            "attributes": {
+                                "citation_level": "Grounding",
+                                "proof_document": "README.md",
+                                "proof_snippet": "Install the hook.",
+                            },
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        store = GraphStore(self.path)
+        result = store.import_file(input_path)
+        store.save()
+        loaded = GraphStore(self.path)
+
+        self.assertEqual(result.inserted, 1)
+        self.assertEqual(loaded.metadata["extracted_triples_count"], 1)
+        self.assertEqual(loaded.graph.nodes["ai log"]["category"], "TECH_ISSUE")
+        context = loaded.get_context("AI Log")
+        self.assertEqual(context[0]["edges"][0]["source"], "README.md")
+        self.assertEqual(context[0]["edges"][0]["attributes"]["citation_level"], "Grounding")
+
     def test_cycles_terminate_and_unknown_entities_are_empty(self):
         store = GraphStore(self.path)
         store.add_triples(

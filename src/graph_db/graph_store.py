@@ -38,6 +38,7 @@ class ImportResult:
 
 def normalize_text(value: str) -> str:
     value = unicodedata.normalize("NFKC", value)
+    value = re.sub(r"[_-]+", " ", value)
     return re.sub(r"\s+", " ", value.strip()).casefold()
 
 
@@ -61,6 +62,7 @@ class GraphStore:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
         self.graph = nx.MultiDiGraph()
+        self.metadata: dict[str, object] = {}
         if self.path.exists():
             self.load()
 
@@ -74,6 +76,11 @@ class GraphStore:
         if not all(isinstance(value, str) and value.strip() for value in (subject, relation, object_)):
             raise ValueError("subject, relation, and object must be non-empty strings")
         source = triple.get("source", "unknown")
+        attributes = triple.get("attributes", {})
+        if not isinstance(attributes, Mapping):
+            raise ValueError("attributes must be an object")
+        if source == "unknown":
+            source = attributes.get("proof_document") or attributes.get("discord_url") or attributes.get("file_name") or "unknown"
         if not isinstance(source, str):
             raise ValueError("source must be a string")
         confidence = triple.get("confidence", 1.0)
@@ -93,6 +100,7 @@ class GraphStore:
             "object_label": object_.strip(),
             "source": source_name,
             "confidence": float(confidence),
+            "attributes": dict(attributes),
         }
 
     def load(self) -> None:
@@ -102,6 +110,7 @@ class GraphStore:
                 raise ValueError("graph store root must be an object")
             if payload.get("schema_version") != self.SCHEMA_VERSION:
                 raise ValueError("unsupported schema version")
+            self.metadata = dict(payload.get("metadata", {}))
             nodes = payload["nodes"]
             edges = payload["edges"]
             if not isinstance(nodes, list) or not isinstance(edges, list):
@@ -110,7 +119,12 @@ class GraphStore:
             for node in nodes:
                 if not isinstance(node, Mapping) or not isinstance(node.get("id"), str):
                     raise ValueError("invalid node record")
-                graph.add_node(node["id"], label=node.get("label", node["id"]))
+                graph.add_node(
+                    node["id"],
+                    label=node.get("label", node["id"]),
+                    category=node.get("category"),
+                    attributes=dict(node.get("attributes", {})),
+                )
             for edge in edges:
                 if not isinstance(edge, Mapping):
                     raise ValueError("invalid edge record")
@@ -127,6 +141,7 @@ class GraphStore:
                     relation=canonical["relation"],
                     source=canonical["source"],
                     confidence=canonical["confidence"],
+                    attributes=canonical["attributes"],
                 )
             self.graph = graph
         except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
@@ -135,7 +150,12 @@ class GraphStore:
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         nodes = [
-            {"id": node, "label": data.get("label", node)}
+            {
+                "id": node,
+                "label": data.get("label", node),
+                "category": data.get("category"),
+                "attributes": data.get("attributes", {}),
+            }
             for node, data in sorted(self.graph.nodes(data=True))
         ]
         edges = []
@@ -150,9 +170,15 @@ class GraphStore:
                     "object": object_,
                     "source": data.get("source", "unknown"),
                     "confidence": data.get("confidence", 1.0),
+                    "attributes": data.get("attributes", {}),
                 }
             )
-        payload = {"schema_version": self.SCHEMA_VERSION, "nodes": nodes, "edges": edges}
+        payload = {
+            "schema_version": self.SCHEMA_VERSION,
+            "metadata": self.metadata,
+            "nodes": nodes,
+            "edges": edges,
+        }
         fd, temporary = tempfile.mkstemp(prefix=f".{self.path.name}.", dir=self.path.parent)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -169,8 +195,8 @@ class GraphStore:
         canonical = self._canonicalize(triple)
         subject = canonical["subject"]
         object_ = canonical["object"]
-        self.graph.add_node(subject, label=canonical["subject_label"])
-        self.graph.add_node(object_, label=canonical["object_label"])
+        self.graph.add_node(subject, label=canonical["subject_label"], attributes={})
+        self.graph.add_node(object_, label=canonical["object_label"], attributes={})
         key = _edge_id(subject, canonical["relation"], object_, canonical["source"])
         if self.graph.has_edge(subject, object_, key):
             return False
@@ -181,8 +207,32 @@ class GraphStore:
             relation=canonical["relation"],
             source=canonical["source"],
             confidence=canonical["confidence"],
+            attributes=canonical["attributes"],
         )
         return True
+
+    def add_entities(self, entities: Iterable[Mapping[str, object]]) -> int:
+        """Add entity labels/categories without requiring an edge for each entity."""
+        inserted = 0
+        for entity in entities:
+            if not isinstance(entity, Mapping):
+                continue
+            name = entity.get("name")
+            if not isinstance(name, str) or not name.strip():
+                continue
+            node_id = normalize_text(name)
+            existing = self.graph.nodes.get(node_id, {})
+            attributes = entity.get("attributes", existing.get("attributes", {}))
+            if not isinstance(attributes, Mapping):
+                continue
+            self.graph.add_node(
+                node_id,
+                label=existing.get("label", name.strip()),
+                category=entity.get("category", existing.get("category")),
+                attributes=dict(attributes),
+            )
+            inserted += 1
+        return inserted
 
     def add_triples(self, triples: Iterable[Mapping[str, object]]) -> ImportResult:
         result = ImportResult()
@@ -205,6 +255,9 @@ class GraphStore:
             triples = payload.get("triples") if isinstance(payload, Mapping) else payload
             if not isinstance(triples, list):
                 raise ValueError("expected a triple list or an object containing 'triples'")
+            if isinstance(payload, Mapping):
+                self.metadata = dict(payload.get("metadata", {}))
+                self.add_entities(payload.get("entities", []))
         except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
             return ImportResult(invalid=1, errors=[str(exc)])
         return self.add_triples(triples)
@@ -260,6 +313,7 @@ class GraphStore:
                     "object": target,
                     "source": data.get("source", "unknown"),
                     "confidence": data.get("confidence", 1.0),
+                    "attributes": data.get("attributes", {}),
                 }
                 next_nodes = path_nodes + [next_node]
                 next_edges = path_edges + [edge]

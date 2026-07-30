@@ -20,10 +20,18 @@ can cite the originating document. Empty or unknown queries return empty lists.
 Member 1 input is imported separately:
 
 ```python
-result = graph.import_file("data/processed/triples.json")
+result = graph.import_file("data/extracted_triples.json")
 graph.save()
 print(result.to_dict())
 ```
 
-The importer accepts a top-level list or an object containing `triples`. Runtime
-stores are generated under `data/` and must not be committed with raw data.
+The Member 1 payload contains `metadata`, `entities`, and `triples`. Triple
+citations are preserved from `attributes.proof_document`, `discord_url`,
+`file_name`, and `proof_snippet`. Runtime stores are generated under `data/`
+and must not be committed with raw data.
+
+To build the runtime graph directly:
+
+```bash
+python codebase/src/graph_db/build_graph.py
+```
