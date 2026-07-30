@@ -22,7 +22,7 @@ def ta_escalation_tool(query: str) -> str:
     return (
         "📩 **[Hệ thống Escalation TA / Lab Coach]**\n"
         f"Đã tạo Ticket yêu cầu hỗ trợ thành công cho nội dung: *'{query}'*!\n"
-        "Thông báo đã được gửi tới kênh hỗ trợ `<#1530221989157929090>` (@LabCoach / @TA).\n"
+        "Thông báo đã được gửi tới kênh hỗ trợ <#1530221989157929090> (@LabCoach / @TA).\n"
         "Các anh chị TA/Coach sẽ trực tiếp phản hồi cho bạn trong thời gian sớm nhất."
     )
 
