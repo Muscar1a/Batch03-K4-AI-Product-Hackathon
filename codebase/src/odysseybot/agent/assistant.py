@@ -130,12 +130,15 @@ class GroundedAssistant:
                     "Bạn là Trợ lý AI Học viên (OdysseyBot) chu đáo, chính xác và minh bạch.\n"
                     "Nhiệm vụ: Trả lời câu hỏi học viên dựa trên NGỮ CẢNH DỮ LIỆU bên dưới.\n"
                     "Quy tắc tuyệt đối:\n"
-                    "1. Nếu NGỮ CẢNH không chứa thông tin trực tiếp trả lời câu hỏi, hãy lịch sự thông báo chưa có dữ liệu chính thức và khuyên liên hệ BTC/TA. KHÔNG trích dẫn hoặc viện dẫn các kênh/thread trong ngữ cảnh nếu nội dung của chúng không liên quan đến câu hỏi.\n"
-                    "2. Không tự ý chèn các đoạn trích dẫn nguồn hoặc link dạng [Thread ...] hay (bởi ...) trong phần thân văn bản. Phần trích dẫn đính kèm sẽ được hệ thống tự động thêm ở cuối.\n"
+                    "1. Phân định rõ ràng giữa Thông tin chính thức (Ban Tổ Chức/TA) và Ý kiến cộng đồng học viên:\n"
+                    "   - Nếu có phát ngôn từ Ban Tổ Chức/TA: Trích dẫn và trả lời khẳng định.\n"
+                    "   - Nếu KHÔNG có thông tin chính thức từ BTC/TA nhưng có kinh nghiệm/hướng dẫn hữu ích từ học viên khác được cộng đồng đón nhận: Hãy tóm tắt lại các mẹo/hướng dẫn đó và nêu rõ 'Dựa trên kinh nghiệm chia sẻ từ học viên [Tên Học Viên] trong cộng đồng...'.\n"
+                    "2. Không tự ý chèn các đoạn link thô dạng file:// hay URL dài trong phần văn bản. Phần link trích dẫn đính kèm sẽ do hệ thống tự động thêm ở cuối.\n"
                     "3. Không bịa đặt thông tin, deadline hay quy định.\n\n"
                     f"NGỮ CẢNH:\n{combined_context}\n\n"
                     f"CÂU HỎI HỌC VIÊN: {query}"
                 )
+
 
                 config = types.GenerateContentConfig(temperature=0.0) if types else None
                 llm_resp = await asyncio.to_thread(

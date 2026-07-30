@@ -71,9 +71,18 @@ def main():
             message_id=message_id,
             text=text,
         )
-        answer = await assistant.answer(req)
-        citation_lines = [f"- {c.url} - {c.title} ({c.authority})" if c.url.startswith("<#") else f"- [{c.title}]({c.url}) ({c.authority})" for c in answer.citations] if answer.citations else None
+        citation_lines = []
+        if answer.citations:
+            for c in answer.citations:
+                if c.source_type in ["STAFF_DISCORD", "LEARNER_DISCORD"]:
+                    citation_lines.append(f"- {c.url} - `{c.title}` ({c.authority})")
+                elif c.source_type == "OFFICIAL_DOCUMENT":
+                    citation_lines.append(f"- 📄 **{c.title}** *(BTC AI Thực Chiến)*")
+                else:
+                    citation_lines.append(f"- [{c.title}]({c.url}) ({c.authority})")
+        citation_lines = citation_lines if citation_lines else None
         await send_split_message(destination, answer.text, citation_lines)
+
 
     # 17:30 Sync Scheduler Task
 
