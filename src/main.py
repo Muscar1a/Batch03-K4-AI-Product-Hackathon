@@ -67,7 +67,8 @@ def run_discord_bot(token: str):
                 )
                 return
 
-            response = process_query_with_agent(query, user_id=str(message.author.id))
+            async with message.channel.typing():
+                response = process_query_with_agent(query, user_id=str(message.author.id))
             await message.channel.send(response)
 
     client.run(token)
