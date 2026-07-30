@@ -1,0 +1,40 @@
+[
+  {
+    "id": "TC01",
+    "category": "LOGISTICS",
+    "query": "Hạn nộp CP4 khóa 4 khi nào?",
+    "expected_intent": "LOGISTICS",
+    "expected_answer_keywords": ["23:59", "12:00", "Ngày 2", "CP4"]
+  },
+  {
+    "id": "TC02",
+    "category": "AMBIGUOUS",
+    "query": "Hạn nộp bài là mấy giờ?",
+    "expected_intent": "AMBIGUOUS",
+    "expected_action": "Clarification required"
+  },
+  {
+    "id": "TC03",
+    "category": "OUT_OF_SCOPE",
+    "query": "Cho xin đáp án bài tập 2",
+    "expected_intent": "OUT_OF_SCOPE",
+    "expected_action": "Refusal"
+  },
+  {
+    "id": "TC04",
+    "category": "DYNAMIC_MEMORY",
+    "query": "Mình thuộc nhóm G14 đang chạy trên Windows bị lỗi AI Log",
+    "expected_intent": "TECH_BUG",
+    "expected_extracted_facts": [
+      {"fact_type": "GROUP", "value": "G14"},
+      {"fact_type": "OS", "value": "Windows"}
+    ]
+  },
+  {
+    "id": "TC05",
+    "category": "TOOL_EXECUTION",
+    "query": "Tìm giúp mình tài liệu LangGraph mới nhất",
+    "expected_intent": "EXECUTE_TOOL",
+    "expected_tool": "web_search_tool"
+  }
+]
