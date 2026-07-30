@@ -106,6 +106,8 @@ def load_and_clean_json_file(file_path: Path) -> Tuple[List[Dict[str, Any]], Dic
     # Gắn thêm channel metadata vào từng tin nhắn để phục vụ trích xuất triples
     for m in cleaned_msgs:
         m["_channel_name"] = channel_info.get("name", "")
+        m["_channel_id"] = channel_info.get("id", "")
+        m["_guild_id"] = data.get("guild", {}).get("id", "1526532830627102781")
         m["_category"] = channel_info.get("category", "")
         m["_file_name"] = file_path.name
 

@@ -69,57 +69,28 @@ def anonymize_user_id(author_info: Dict[str, Any]) -> str:
     return f"User_Anon_{hashed}"
 
 
-def build_citation_proof(msg: Dict[str, Any], reference_time: Optional[datetime] = None) -> Dict[str, Any]:
+def build_citation_proof(msg: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Xây dựng chiến lược trích dẫn chứng minh động:
-    - Nếu tin nhắn trong vòng 3 ngày: Chọn Cấp 2 (Link URL Discord trực tiếp)
-    - Nếu tin nhắn > 3 ngày (bị trôi xa): Chọn Cấp 3 (Mã ẩn danh + Snippet trích dẫn gốc)
+    Xây dựng trích dẫn chứng minh Cấp 2 (Level 2 - Direct Discord Link) cho 100% tin nhắn.
+    URL chuẩn: https://discord.com/channels/{guild_id}/{channel_id}/{message_id}
     """
     msg_id = str(msg.get("id", ""))
-    channel_id = str(msg.get("channel_id") or msg.get("_channel_id") or "")
-    guild_id = str(msg.get("guild_id") or "1526532830627102781")
+    channel_id = str(msg.get("channel_id") or msg.get("_channel_id") or "1527920177390293164")
+    guild_id = str(msg.get("guild_id") or msg.get("_guild_id") or "1526532830627102781")
     content = msg.get("content", "")
     channel_name = msg.get("_channel_name", "")
     file_name = msg.get("_file_name", "")
 
-    # Tính độ tuổi tin nhắn
-    ts_str = msg.get("timestamp")
-    is_recent = False
-    
-    if ts_str:
-        try:
-            # Format: 2026-07-26T01:16:56.497+07:00
-            msg_dt = datetime.fromisoformat(ts_str)
-            ref_dt = reference_time or datetime.now(timezone.utc)
-            if msg_dt.tzinfo is None:
-                msg_dt = msg_dt.replace(tzinfo=timezone.utc)
-            if ref_dt.tzinfo is None:
-                ref_dt = ref_dt.replace(tzinfo=timezone.utc)
-                
-            age_days = abs((ref_dt - msg_dt).total_seconds()) / 86400.0
-            if age_days <= 3.0:
-                is_recent = True
-        except Exception:
-            is_recent = False
+    discord_url = f"https://discord.com/channels/{guild_id}/{channel_id}/{msg_id}" if msg_id else None
 
-    citation_attr = {
+    return {
         "message_id": msg_id,
         "file_name": file_name,
         "channel_name": channel_name,
-        "proof_snippet": content[:120].replace("\n", " ").strip()
+        "proof_snippet": content[:120].replace("\n", " ").strip(),
+        "citation_level": "Level2_Direct_Discord_Link",
+        "discord_url": discord_url
     }
-
-    # Chọn cấp độ chứng minh
-    if is_recent and channel_id and msg_id:
-        citation_attr["citation_level"] = "Level2_Direct_Discord_Link"
-        citation_attr["discord_url"] = f"https://discord.com/channels/{guild_id}/{channel_id}/{msg_id}"
-        citation_attr["note"] = "Tin nhắn gần (≤3 ngày) -> Dẫn link Discord trực tiếp"
-    else:
-        citation_attr["citation_level"] = "Level3_Anonymized_Proof_Snippet"
-        citation_attr["discord_url"] = None
-        citation_attr["note"] = "Tin nhắn đã lâu (>3 ngày) -> Dùng trích dẫn bằng chứng ẩn danh trong Audit Log"
-
-    return citation_attr
 
 
 def extract_triples_from_message(msg: Dict[str, Any]) -> List[Triple]:
