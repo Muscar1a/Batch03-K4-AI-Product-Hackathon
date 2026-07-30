@@ -1,5 +1,6 @@
 import re
 import os
+import json
 from typing import Dict, Any, List
 from src.agent.state import ChatbotState, UserFact
 from src.agent.tools import execute_tool_by_name
@@ -23,7 +24,7 @@ def format_discord_channel_links(text: str) -> str:
         text = text.replace(name, channel_tag)
     return text
 
-# 1. Tích hợp Gemini LLM SDK (google-genai) & Cấu hình Temperature
+# 1. Tích hợp Gemini LLM SDK (google-genai) & Cấu hình Model tham số lớn
 try:
     from google import genai
     from google.genai import types
@@ -37,7 +38,8 @@ except Exception:
     llm_client = None
     types = None
 
-# Temperature 0.7 cho phản hồi tự nhiên, mềm mại
+# Lấy cấu hình LLM_MODEL từ môi trường (mặc định sử dụng gemma-4-26b-a4b-it)
+LLM_MODEL = os.getenv("LLM_MODEL", "gemma-4-26b-a4b-it")
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 
 # 2. Tích hợp Graph DB & Memory Store từ Thành viên 1 & 2
@@ -46,6 +48,7 @@ try:
     from src.graph_db.graph_store import GraphStore
     
     DATA_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "data")
+    CRAWL_DIR = os.path.join(DATA_DIR, "data", "discord-crawl")
     memory_store_path = os.path.join(DATA_DIR, "memory_store.json")
     graph_store_path = os.path.join(DATA_DIR, "graph_store.json")
     
@@ -59,9 +62,60 @@ try:
 except Exception:
     memory_engine = None
     graph_engine = None
+    CRAWL_DIR = None
+
+def search_discord_crawl_data(query: str, limit: int = 2) -> List[Dict[str, str]]:
+    """Tra cứu trực tiếp dữ liệu thô từ 285 file discord-crawl khi KG chưa có sẵn."""
+    if not CRAWL_DIR or not os.path.exists(CRAWL_DIR):
+        return []
+    
+    query_norm = re.sub(r"\s+", "", query.lower().replace("anti gravity", "antigravity"))
+    keywords = [w for w in query.lower().split() if len(w) > 2]
+    
+    results = []
+    try:
+        files = os.listdir(CRAWL_DIR)
+        for fname in files:
+            if not fname.endswith(".json"):
+                continue
+            
+            fname_lower = fname.lower().replace("anti gravity", "antigravity")
+            if any(kw in fname_lower for kw in keywords) or "antigravity" in fname_lower and "antigravity" in query_norm:
+                fpath = os.path.join(CRAWL_DIR, fname)
+                try:
+                    with open(fpath, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    
+                    channel_info = data.get("channel", {})
+                    thread_id = channel_info.get("id")
+                    thread_name = channel_info.get("name", fname.replace(".json", ""))
+                    messages = data.get("messages", [])
+                    first_msg = messages[0].get("content", "") if messages else ""
+                    
+                    snippet = first_msg[:300].strip() if first_msg else ""
+                    results.append({
+                        "title": thread_name,
+                        "thread_id": thread_id,
+                        "content": snippet,
+                        "citation": f"Thread #{thread_name} (<#{thread_id}>)"
+                    })
+                    if len(results) >= limit:
+                        break
+                except Exception:
+                    continue
+    except Exception:
+        pass
+        
+    return results
 
 # Knowledge Base chính thức mở rộng từ BTC
 KNOWLEDGE_BASE = {
+    "antigravity_fix": {
+        "title": "Fix Lỗi AI Log Antigravity IDE (No new prompts / overview.txt)",
+        "keywords": ["antigravity", "anti gravity", "agy", "log_antigravity", "fix antigravity", "lỗi antigravity", "brain dir", "transcript.jsonl"],
+        "content": "Cách sửa lỗi Antigravity IDE báo 'No new prompts' / không tìm thấy transcript.jsonl:\n1. Antigravity IDE lưu log tại thư mục `.system_generated\\logs\\overview.txt` thay vì `transcript.jsonl`.\n2. Cập nhật script `log_antigravity.py` chỉ hướng đọc file `overview.txt` hoặc dùng `agy` CLI lệnh fix.\n3. Xem hướng dẫn chi tiết tại Thread: <#1531490593543553247> (Kênh <#1530270278301519974>).",
+        "citation": "Thread Mẹo Lab 3 (#1531490593543553247) §Kênh #🏆-chia-sẻ"
+    },
     "feedback_vlearn": {
         "title": "Kênh Feedback & Báo Lỗi VLearn / Codelabs",
         "keywords": ["feedback", "góp ý", "báo lỗi vlearn", "báo lỗi codelabs", "qr feedback", "ý kiến vlearn"],
@@ -124,7 +178,7 @@ KNOWLEDGE_BASE = {
     },
     "ai-log": {
         "title": "Hướng dẫn Setup AI Log",
-        "keywords": ["ai log", "git push", "pre-push", "lỗi git", "hook"],
+        "keywords": ["ai log", "git push", "pre-push", "lỗi git", "hook", "antigravity", "anti gravity", "agy"],
         "content": "Cài đặt git pre-push hook theo hướng dẫn trong kênh <#1530270278301519974>. Kiểm tra file overview.txt trong `.system_generated/logs/`. Trên Windows/macOS: đảm bảo chạy lệnh agy cli trong Git Bash/PowerShell.",
         "citation": "02-guide.md §AI-Log"
     },
@@ -197,7 +251,7 @@ def memory_extractor_and_router_node(state: ChatbotState) -> Dict[str, Any]:
             "extracted_user_facts": extracted_facts
         }
 
-    if "lỗi" in last_user_msg or "bug" in last_user_msg or "ai log" in last_user_msg or "git push" in last_user_msg:
+    if "lỗi" in last_user_msg or "bug" in last_user_msg or "ai log" in last_user_msg or "git push" in last_user_msg or "antigravity" in last_user_msg or "anti gravity" in last_user_msg or "fix" in last_user_msg:
         return {
             "intent": "TECH_BUG",
             "extracted_user_facts": extracted_facts
@@ -228,7 +282,6 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
     
     user_os = next((f["value"] for f in reversed(user_facts) if f.get("fact_type") == "OS"), None)
     
-    # 1. Tra cứu Graph Engine (nếu có)
     if graph_engine:
         entities = graph_engine.find_entities(last_user_msg, limit=5)
         for entity in entities:
@@ -242,23 +295,30 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
                     retrieved_parts.append(f"🌐 [Graph Triple]: ({subj}) -[:{rel}]-> ({obj})")
                     citations.append(f"KGDB ({src})")
 
-    # 2. Match linh hoạt & Tổng hợp đa nguồn từ KNOWLEDGE_BASE
+    normalized_query = last_user_msg.replace("anti gravity", "antigravity")
     for key, data in KNOWLEDGE_BASE.items():
         matched = False
-        if key in last_user_msg or key.replace("-", " ") in last_user_msg:
+        if key in normalized_query or key.replace("-", " ") in normalized_query:
             matched = True
         else:
             for kw in data.get("keywords", []):
-                if kw in last_user_msg:
+                if kw in normalized_query or kw in last_user_msg:
                     matched = True
                     break
                     
         if matched:
             content = data["content"]
-            if key == "ai-log" and user_os:
+            if ("ai-log" in key or "antigravity" in key) and user_os:
                 content += f"\n💡 [Ghi nhận hệ điều hành của bạn từ bộ nhớ: {user_os}]: Áp dụng hướng dẫn cài đặt git pre-push hook dành cho {user_os}."
             retrieved_parts.append(f"📌 **{data['title']}**:\n{content}")
             citations.append(data["citation"])
+
+    has_fake_cp = any(f"cp{i}" in normalized_query or f"checkpoint {i}" in normalized_query for i in range(7, 20))
+    if not has_fake_cp:
+        crawl_matches = search_discord_crawl_data(last_user_msg, limit=2)
+        for c in crawl_matches:
+            retrieved_parts.append(f"💬 **[Thảo luận Discord]: {c['title']}**\n{c['content']}")
+            citations.append(c["citation"])
             
     if not retrieved_parts:
         if "nghỉ" in last_user_msg:
@@ -310,14 +370,14 @@ def guardrail_refusal_node(state: ChatbotState) -> Dict[str, Any]:
 
 def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
     """
-    Node 6: AI Tutor Synthesizer mềm mại, linh hoạt và tổng hợp thông minh bằng Gemini LLM.
+    Node 6: AI Tutor Synthesizer mềm mại, linh hoạt và tổng hợp thông minh bằng Gemini Pro (Model tham số lớn).
     """
     context = state.get("retrieved_context", "")
     citations = state.get("citations", [])
     messages = state.get("messages", [])
     user_query = messages[-1].get("content", "") if messages else ""
     
-    # 1. Sử dụng Gemini LLM với System Prompt chuyên dụng làm Trợ lý AI học tập mềm mại
+    # 1. Gọi Gemini Model tham số lớn (gemini-2.5-pro hoặc gemini-2.5-flash)
     if llm_client:
         try:
             system_prompt = (
@@ -325,7 +385,7 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 "Nhiệm vụ của bạn:\n"
                 "1. Trả lời đúng trọng tâm câu hỏi của học viên bằng văn phong tự nhiên, lịch sự, ân cần như một người đồng hành thực thụ.\n"
                 "2. Đừng dán khuôn mẫu thô cứng. Hãy tự tổng hợp lại các ý trong NGỮ CẢNH TRA CỨU bên dưới thành một câu trả lời mượt mà, dễ hiểu.\n"
-                "3. Nếu học viên hỏi về Feedback / Góp ý VLearn: hãy chỉ rõ đường link/thread gửi QR feedback (<#1530052915383894107>) và giải thích lịch sự.\n"
+                "3. Nếu học viên hỏi về cách fix lỗi Antigravity IDE / AI Log, hãy giải thích từng bước rõ ràng, trích dẫn file overview.txt và trỏ tới thread hướng dẫn.\n"
                 "4. Giữ nguyên định dạng link kênh Discord dạng <#ID> nếu có trong ngữ cảnh.\n\n"
                 f"NGỮ CẢNH DỮ LIỆU TRA CỨU:\n{context}\n\n"
                 f"CÂU HỎI CỦA HỌC VIÊN: {user_query}"
@@ -336,11 +396,20 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 top_p=0.95
             ) if types else None
             
-            llm_response = llm_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=system_prompt,
-                config=config
-            )
+            # Thử gọi Model tham số lớn (LLM_MODEL) với fallback tự động
+            try:
+                llm_response = llm_client.models.generate_content(
+                    model=LLM_MODEL,
+                    contents=system_prompt,
+                    config=config
+                )
+            except Exception:
+                llm_response = llm_client.models.generate_content(
+                    model="gemini-2.5-flash",
+                    contents=system_prompt,
+                    config=config
+                )
+                
             if llm_response and llm_response.text:
                 citation_str = "\n".join([f"- *Nguồn: {c}*" for c in citations if c != "Không có nguồn"])
                 if citation_str:
