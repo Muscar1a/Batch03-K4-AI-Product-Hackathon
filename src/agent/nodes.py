@@ -4,7 +4,7 @@ from typing import Dict, Any, List
 from src.agent.state import ChatbotState, UserFact
 from src.agent.tools import execute_tool_by_name
 
-# Map các tên kênh Discord sang Discord Channel ID Tag (<#ID>) chuẩn xác
+# Map các tên kênh và Thread Discord sang ID Tag (<#ID>) chuẩn xác
 DISCORD_CHANNEL_MAP = {
     "#🏆-chia-sẻ": "<#1530270278301519974>",
     "#chia-sẻ": "<#1530270278301519974>",
@@ -13,11 +13,12 @@ DISCORD_CHANNEL_MAP = {
     "#💬-chung": "<#1527920177390293164>",
     "#chung": "<#1527920177390293164>",
     "#📖-bài-học": "<#1531838822608797747>",
-    "#bài-học": "<#1531838822608797747>"
+    "#bài-học": "<#1531838822608797747>",
+    "#feedback-vlearn": "<#1530052915383894107>"
 }
 
 def format_discord_channel_links(text: str) -> str:
-    """Tự động chuyển đổi các tên kênh dạng #tên-kênh sang định dạng link bấm được của Discord (<#ID>)."""
+    """Tự động chuyển đổi tên kênh/thread dạng #tên-kênh sang định dạng link bấm được của Discord (<#ID>)."""
     for name, channel_tag in DISCORD_CHANNEL_MAP.items():
         text = text.replace(name, channel_tag)
     return text
@@ -36,7 +37,7 @@ except Exception:
     llm_client = None
     types = None
 
-# Lấy temperature từ môi trường (mặc định 0.7 cho phản hồi tự nhiên & linh hoạt)
+# Temperature 0.7 cho phản hồi tự nhiên, mềm mại
 LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
 
 # 2. Tích hợp Graph DB & Memory Store từ Thành viên 1 & 2
@@ -51,7 +52,6 @@ try:
     memory_engine = MemoryStore(memory_store_path)
     graph_engine = GraphStore(graph_store_path) if os.path.exists(graph_store_path) else None
     
-    # Import triples nếu đồ thị chưa có
     triples_path = os.path.join(DATA_DIR, "extracted_triples.json")
     if graph_engine and os.path.exists(triples_path) and len(graph_engine.graph.nodes) == 0:
         graph_engine.import_file(triples_path)
@@ -60,8 +60,14 @@ except Exception:
     memory_engine = None
     graph_engine = None
 
-# Knowledge Base chính thức từ BTC
+# Knowledge Base chính thức mở rộng từ BTC
 KNOWLEDGE_BASE = {
+    "feedback_vlearn": {
+        "title": "Kênh Feedback & Báo Lỗi VLearn / Codelabs",
+        "keywords": ["feedback", "góp ý", "báo lỗi vlearn", "báo lỗi codelabs", "qr feedback", "ý kiến vlearn"],
+        "content": "Để gửi feedback góp ý hoặc báo lỗi UI/UX trên hệ thống VLearn/Codelabs:\n1. Quét mã QR Feedback tại Thread chính thức: <#1530052915383894107> (do Lab Coach Trần Hoàng Hà đăng tại kênh #🙋-hỏi-đáp).\n2. Hoặc gửi bài phản hồi trực tiếp tại thread 'Feedback, bug report vlearn.dev' <#1530226830920126505>.",
+        "citation": "Thread QR Feedback Vlearn (#1530052915383894107) §Kênh #🙋-hỏi-đáp"
+    },
     "gioi_thieu_khoa_hoc": {
         "title": "Tổng Quan Chương Trình AI Thực Chiến (AI20K Build Phase)",
         "keywords": ["ai thực chiến", "chương trình ai thực chiến", "khóa học ai thực chiến", "giới thiệu chương trình", "khoá học", "chương trình"],
@@ -106,7 +112,7 @@ KNOWLEDGE_BASE = {
     },
     "vlearn": {
         "title": "Nền tảng VLearn & Codelabs",
-        "keywords": ["vlearn", "codelabs", "nộp bài", "link nộp", "bài tập"],
+        "keywords": ["vlearn", "codelabs", "nộp bài", "link nộp", "bài tập", "trang web vlearn"],
         "content": "Trang học tập và nộp bài tại https://vlearn.dev và Codelabs tại https://codelabs.vlearn.dev.",
         "citation": "02-guide.md §Vlearn"
     },
@@ -222,8 +228,9 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
     
     user_os = next((f["value"] for f in reversed(user_facts) if f.get("fact_type") == "OS"), None)
     
+    # 1. Tra cứu Graph Engine (nếu có)
     if graph_engine:
-        entities = graph_engine.find_entities(last_user_msg, limit=3)
+        entities = graph_engine.find_entities(last_user_msg, limit=5)
         for entity in entities:
             traversal = graph_engine.get_context(entity["id"], max_hops=2, limit=5)
             for path in traversal:
@@ -235,6 +242,7 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
                     retrieved_parts.append(f"🌐 [Graph Triple]: ({subj}) -[:{rel}]-> ({obj})")
                     citations.append(f"KGDB ({src})")
 
+    # 2. Match linh hoạt & Tổng hợp đa nguồn từ KNOWLEDGE_BASE
     for key, data in KNOWLEDGE_BASE.items():
         matched = False
         if key in last_user_msg or key.replace("-", " ") in last_user_msg:
@@ -301,18 +309,25 @@ def guardrail_refusal_node(state: ChatbotState) -> Dict[str, Any]:
     }
 
 def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
+    """
+    Node 6: AI Tutor Synthesizer mềm mại, linh hoạt và tổng hợp thông minh bằng Gemini LLM.
+    """
     context = state.get("retrieved_context", "")
     citations = state.get("citations", [])
     messages = state.get("messages", [])
     user_query = messages[-1].get("content", "") if messages else ""
     
+    # 1. Sử dụng Gemini LLM với System Prompt chuyên dụng làm Trợ lý AI học tập mềm mại
     if llm_client:
         try:
             system_prompt = (
-                "Bạn là Trợ lý Học viên AI thông minh, thân thiện và linh hoạt cho chương trình AI Thực Chiến (Cohort 3 & 4).\n"
-                "Hãy trả lời câu hỏi của học viên một cách tự nhiên, mạch lạc và chính xác dựa trên ngữ cảnh dưới đây.\n"
-                "Nếu ngữ cảnh có nhắc đến tên kênh Discord như #🏆-chia-sẻ hay #🙋-hỏi-đáp hay #📖-bài-học, hãy giữ nguyên định dạng kênh.\n\n"
-                f"NGỮ CẢNH TRA CỨU:\n{context}\n\n"
+                "Bạn là một Trợ lý AI Học tập (AI Tutor) vô cùng tinh tế, chu đáo và mềm mại cho khóa học AI Thực Chiến.\n"
+                "Nhiệm vụ của bạn:\n"
+                "1. Trả lời đúng trọng tâm câu hỏi của học viên bằng văn phong tự nhiên, lịch sự, ân cần như một người đồng hành thực thụ.\n"
+                "2. Đừng dán khuôn mẫu thô cứng. Hãy tự tổng hợp lại các ý trong NGỮ CẢNH TRA CỨU bên dưới thành một câu trả lời mượt mà, dễ hiểu.\n"
+                "3. Nếu học viên hỏi về Feedback / Góp ý VLearn: hãy chỉ rõ đường link/thread gửi QR feedback (<#1530052915383894107>) và giải thích lịch sự.\n"
+                "4. Giữ nguyên định dạng link kênh Discord dạng <#ID> nếu có trong ngữ cảnh.\n\n"
+                f"NGỮ CẢNH DỮ LIỆU TRA CỨU:\n{context}\n\n"
                 f"CÂU HỎI CỦA HỌC VIÊN: {user_query}"
             )
             
@@ -339,16 +354,17 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
         except Exception:
             pass
 
+    # 2. Fallback Synthesizer
     if "Chưa tìm thấy căn cứ chính thức" in context:
         response = (
             "🔍 **[Chưa có căn cứ chính thức - HAX G10]**\n"
-            "Hiện tại chưa tìm thấy thông tin chính thức của BTC về câu hỏi này.\n"
-            "📩 Đã ghi nhận và chuyển thông báo tới các **Lab Coach / TA** (@LabCoach) để hỗ trợ bạn sớm nhất!"
+            "Hiện tại mình chưa tìm thấy thông tin chính thức của BTC về câu hỏi này.\n"
+            "📩 Mình đã ghi nhận và chuyển câu hỏi tới các anh chị **Lab Coach / TA** (@LabCoach) để hỗ trợ bạn sớm nhất nhé!"
         )
     else:
         citation_str = "\n".join([f"- *Nguồn: {c}*" for c in citations])
         response = (
-            f"🤖 **[Trợ lý Học viên AI - Thông tin chính thức HAX G2]**\n\n"
+            f"🤖 **[Trợ lý Học viên AI]**\n\n"
             f"{context}\n\n"
             f"📌 **Trích dẫn minh bạch**:\n{citation_str}"
         )
