@@ -18,7 +18,7 @@ def main() -> int:
     parser.add_argument("output", nargs="?", type=Path, default=Path("data/kg_database.json"))
     args = parser.parse_args()
 
-    store = GraphStore(args.output)
+    store = GraphStore(args.output, load_existing=False)
     result = store.import_file(args.input)
     if result.invalid or not result.inserted:
         print(result.to_dict())

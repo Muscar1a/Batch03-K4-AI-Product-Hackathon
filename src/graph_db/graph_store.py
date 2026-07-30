@@ -59,11 +59,11 @@ class GraphStore:
 
     SCHEMA_VERSION = "1.0"
 
-    def __init__(self, path: str | Path) -> None:
+    def __init__(self, path: str | Path, load_existing: bool = True) -> None:
         self.path = Path(path)
         self.graph = nx.MultiDiGraph()
         self.metadata: dict[str, object] = {}
-        if self.path.exists():
+        if load_existing and self.path.exists():
             self.load()
 
     @staticmethod
