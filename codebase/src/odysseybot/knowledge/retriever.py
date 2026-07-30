@@ -59,7 +59,7 @@ class KnowledgeRetriever:
                     phrase = f"%{p_kw}%"
                     async with db.execute(
                         """
-                        SELECT sm.id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
+                        SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
                         FROM source_messages sm
                         WHERE sm.content LIKE ? OR sm.channel_name LIKE ?
                         ORDER BY sm.timestamp DESC
@@ -68,17 +68,18 @@ class KnowledgeRetriever:
                         (phrase, phrase, limit)
                     ) as cursor:
                         async for row in cursor:
-                            msg_id, content, author_name, channel_name, timestamp = row
+                            msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp = row
                             if msg_id not in seen_ids:
                                 seen_ids.add(msg_id)
                                 ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
+                                target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
                                 citations.append(
                                     Citation(
                                         source_type="STAFF_DISCORD",
-                                        title=f"Kênh #{channel_name}",
-                                        url=f"https://discord.com/channels/{settings.DCE_SOURCE_GUILD_ID or '1526532830627102781'}/{msg_id}",
+                                        title=f"Kênh #{channel_name} (MsgID: {msg_id})",
+                                        url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
                                         excerpt=content[:450],
-                                        authority=f"Tác giả: {author_name}",
+                                        authority=f"Tác giả: {author_name} (Thread/MsgID: {channel_id}/{msg_id})",
                                         source_timestamp=ts_dt,
                                     )
                                 )
@@ -89,7 +90,7 @@ class KnowledgeRetriever:
                         like_pattern = f"%{kw}%"
                         async with db.execute(
                             """
-                            SELECT sm.id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
+                            SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
                             FROM source_messages sm
                             WHERE sm.content LIKE ? OR sm.channel_name LIKE ?
                             ORDER BY sm.timestamp DESC
@@ -98,20 +99,22 @@ class KnowledgeRetriever:
                             (like_pattern, like_pattern, limit - len(citations))
                         ) as cursor:
                             async for row in cursor:
-                                msg_id, content, author_name, channel_name, timestamp = row
+                                msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp = row
                                 if msg_id not in seen_ids:
                                     seen_ids.add(msg_id)
                                     ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
+                                    target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
                                     citations.append(
                                         Citation(
                                             source_type="STAFF_DISCORD",
-                                            title=f"Kênh #{channel_name}",
-                                            url=f"https://discord.com/channels/{settings.DCE_SOURCE_GUILD_ID or '1526532830627102781'}/{msg_id}",
+                                            title=f"Kênh #{channel_name} (MsgID: {msg_id})",
+                                            url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
                                             excerpt=content[:450],
-                                            authority=f"Tác giả: {author_name}",
+                                            authority=f"Tác giả: {author_name} (Thread/MsgID: {channel_id}/{msg_id})",
                                             source_timestamp=ts_dt,
                                         )
                                     )
+
                         if len(citations) >= limit:
                             break
 
