@@ -16,7 +16,8 @@ class WebSearchAdapter:
 
     async def search(self, query: str, max_results: int = 3) -> List[Dict[str, Any]]:
         if not self.api_key:
-            return [{"title": "Demo Tavily Search", "url": "https://tavily.com", "content": f"Simulated search results for: {query}"}]
+            return []
+
 
         url = "https://api.tavily.com/search"
         payload = {

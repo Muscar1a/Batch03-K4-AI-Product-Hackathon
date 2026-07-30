@@ -1,0 +1,3 @@
+- TÍnh năng validator:
+  - Nếu thông tin từ LAB COACH/ ADMIN = 100% đúng
+  - thông tin từ người dùng --> dựa vào user phản hổi để đưa ra % tin cậy

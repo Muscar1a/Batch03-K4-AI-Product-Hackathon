@@ -63,6 +63,7 @@ class ProgramArchiveSync:
         total_files = 0
         total_messages = 0
 
+        exported_files = []
         try:
             for channel_id in set(channels_to_export):
                 try:
@@ -72,25 +73,29 @@ class ProgramArchiveSync:
                         after_timestamp=after_timestamp,
                         include_threads=True,
                     )
+                    exported_files.append(exported_file)
                     total_files += 1
-
-                    inserted, _ = await self.importer.import_json_file(exported_file)
-                    total_messages += inserted
                 except DCEAuthError as auth_err:
                     raise auth_err
-                except DCEAdapterError:
-                    continue
+                except DCEAdapterError as adapt_err:
+                    # Fail the entire run atomically if an export fails
+                    raise RuntimeError(f"Export failed for channel {channel_id}: {adapt_err}")
 
-            # Atomically move partial -> ready
+            # Import all files in an atomic batch
+            for exported_file in exported_files:
+                inserted, _ = await self.importer.import_json_file(exported_file)
+                total_messages += inserted
+
+            # Atomically move partial -> ready -> imported
             ready_dir.parent.mkdir(parents=True, exist_ok=True)
             staging_dir.rename(ready_dir)
 
-            # Move ready -> imported
             imported_dir.parent.mkdir(parents=True, exist_ok=True)
             ready_dir.rename(imported_dir)
 
             now_iso = datetime.now(timezone.utc).isoformat()
             await self.update_cursor(now_iso)
+
 
             return SyncResult(
                 run_id=run_id,

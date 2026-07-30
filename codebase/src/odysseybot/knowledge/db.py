@@ -108,6 +108,16 @@ CREATE TABLE IF NOT EXISTS user_facts (
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS interactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    action_type TEXT NOT NULL, -- 'ASK', 'ANSWER', 'FEEDBACK', 'ESCALATE'
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
 -- FTS5 Virtual Tables
 CREATE VIRTUAL TABLE IF NOT EXISTS fts_source_messages USING fts5(
     id UNINDEXED,
@@ -121,7 +131,26 @@ CREATE VIRTUAL TABLE IF NOT EXISTS fts_claims USING fts5(
     title,
     content
 );
+
+-- FTS Sync Triggers
+CREATE TRIGGER IF NOT EXISTS source_messages_ai AFTER INSERT ON source_messages BEGIN
+    INSERT INTO fts_source_messages(id, content, author_name, channel_name)
+    VALUES (new.id, new.content, new.author_name, new.channel_name);
+END;
+
+CREATE TRIGGER IF NOT EXISTS source_messages_ad AFTER DELETE ON source_messages BEGIN
+    DELETE FROM fts_source_messages WHERE id = old.id;
+END;
+
+CREATE TRIGGER IF NOT EXISTS source_messages_au AFTER UPDATE ON source_messages BEGIN
+    UPDATE fts_source_messages SET
+        content = new.content,
+        author_name = new.author_name,
+        channel_name = new.channel_name
+    WHERE id = old.id;
+END;
 """
+
 
 
 def init_db_sync(db_path: Path) -> None:

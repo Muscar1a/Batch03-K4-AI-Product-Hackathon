@@ -59,8 +59,8 @@ class DCEAdapter:
         if after_timestamp:
             cmd.extend(["--after", after_timestamp])
 
-        # Prepare isolated environment with user token
-        env = os.environ.copy()
+        # Construct minimal isolated environment (PATH + DISCORD_TOKEN)
+        env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
         if settings.DCE_USER_TOKEN:
             env["DISCORD_TOKEN"] = settings.DCE_USER_TOKEN.get_secret_value()
 
@@ -80,9 +80,15 @@ class DCEAdapter:
             stderr_str = stderr.decode("utf-8", errors="replace")
 
             if process.returncode != 0:
+                # Sanitize secret token from stderr before raising exception
+                sanitized_stderr = stderr_str
+                if settings.DCE_USER_TOKEN:
+                    sanitized_stderr = sanitized_stderr.replace(settings.DCE_USER_TOKEN.get_secret_value(), "***REDACTED***")
+                
                 if "401" in stderr_str or "Unauthorized" in stderr_str or "403" in stderr_str:
-                    raise DCEAuthError(f"Authentication error during export: {stderr_str}")
-                raise DCEAdapterError(f"DCE export failed with exit code {process.returncode}: {stderr_str}")
+                    raise DCEAuthError("Authentication error during export: HTTP 401/403 Unauthorized")
+                raise DCEAdapterError(f"DCE export failed with exit code {process.returncode}: {sanitized_stderr[:200]}")
+
 
             return output_path
 

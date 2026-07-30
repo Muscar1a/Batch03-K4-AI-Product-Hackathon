@@ -55,7 +55,7 @@ class KnowledgeRetriever:
                     pattern = f"%{term}%"
                     async with db.execute(
                         """
-                        SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
+                        SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
                         FROM source_messages sm
                         WHERE (sm.content LIKE ? OR sm.channel_name LIKE ?) AND LENGTH(sm.content) > 30
                         ORDER BY LENGTH(sm.content) DESC, sm.timestamp DESC
@@ -64,7 +64,8 @@ class KnowledgeRetriever:
                         (pattern, pattern, limit - len(citations))
                     ) as cursor:
                         async for row in cursor:
-                            msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp = row
+                            msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
+
                             if msg_id not in seen_ids:
                                 seen_ids.add(msg_id)
                                 ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
@@ -74,7 +75,7 @@ class KnowledgeRetriever:
                                     cname = f"#{cname}"
                                 citations.append(
                                     Citation(
-                                        source_type="STAFF_DISCORD",
+                                        source_type="STAFF_DISCORD" if is_staff else "LEARNER_DISCORD",
                                         title=cname,
                                         url=f"<#{channel_id}>",
                                         excerpt=content[:600],
@@ -82,6 +83,7 @@ class KnowledgeRetriever:
                                         source_timestamp=ts_dt,
                                     )
                                 )
+
 
                     if len(citations) >= limit:
                         break

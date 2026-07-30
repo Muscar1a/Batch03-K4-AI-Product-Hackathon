@@ -1,11 +1,13 @@
-"""Grounded LangGraph Assistant implementation."""
+"""Grounded LangGraph Assistant StateGraph implementation."""
 
 import asyncio
 from datetime import datetime, timezone
+import json
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, TypedDict
 import aiosqlite
 
+from langgraph.graph import StateGraph, END
 from odysseybot.config import settings
 from odysseybot.domain.models import Answer, AskRequest, Citation
 from odysseybot.knowledge.retriever import KnowledgeRetriever
@@ -21,50 +23,106 @@ except Exception:
     types = None
 
 
+class AgentState(TypedDict):
+    request: AskRequest
+    query: str
+    intent: str
+    citations: List[Citation]
+    combined_context: str
+    response_text: str
+    status: str
+    escalated: bool
+    tools_used: List[str]
+
+
 class GroundedAssistant:
-    """Orchestrates LangGraph pipeline for grounded answers with Gemini, FTS5 retriever, and Web tools."""
+    """Orchestrates LangGraph StateGraph pipeline for grounded answers with Gemini, FTS5 retriever, and Web tools."""
 
     def __init__(self):
         self.retriever = KnowledgeRetriever()
         self.web_search = WebSearchAdapter()
         self.web_reader = WebReaderAdapter()
+        self.workflow = self._build_graph()
 
-    async def answer(self, request: AskRequest) -> Answer:
-        query = request.text.strip()
+    def _build_graph(self) -> Any:
+        builder = StateGraph(AgentState)
 
-        # Step 1: Query internal staff claims & FTS context
-        staff_citations = await self.retriever.search_staff_claims(query)
-        tools_used = ["fts_source_messages"]
+        builder.add_node("classify_intent", self._classify_intent_node)
+        builder.add_node("retrieve_claims", self._retrieve_claims_node)
+        builder.add_node("verify_evidence", self._verify_evidence_node)
+        builder.add_node("synthesize_answer", self._synthesize_answer_node)
+        builder.add_node("log_interaction", self._log_interaction_node)
 
-        context_blocks = []
-        for c in staff_citations:
-            context_blocks.append(f"📌 [{c.title}]: {c.excerpt}")
+        builder.set_entry_point("classify_intent")
+        builder.add_edge("classify_intent", "retrieve_claims")
+        builder.add_edge("retrieve_claims", "verify_evidence")
+        builder.add_edge("verify_evidence", "synthesize_answer")
+        builder.add_edge("synthesize_answer", "log_interaction")
+        builder.add_edge("log_interaction", END)
 
-        # Step 2: Intent check & Web fallback if needed
-        is_tech = any(kw in query.lower() for kw in ["search", "tìm kiếm", "web", "docs", "langgraph", "python", "lỗi"])
+        return builder.compile()
+
+    async def _classify_intent_node(self, state: AgentState) -> Dict[str, Any]:
+        query = state["request"].text.strip()
+        is_tech = any(kw in query.lower() for kw in ["search", "tìm kiếm", "web", "docs", "langgraph", "python", "lỗi", "code"])
+        intent = "TECHNICAL" if is_tech else "LOGISTICS"
+        return {"query": query, "intent": intent, "citations": [], "tools_used": []}
+
+    async def _retrieve_claims_node(self, state: AgentState) -> Dict[str, Any]:
+        query = state["query"]
+        citations = await self.retriever.search_staff_claims(query)
+        tools_used = list(state.get("tools_used", [])) + ["fts_source_messages"]
+
         web_citations = []
-        if is_tech and not staff_citations:
+        if state["intent"] == "TECHNICAL" and not citations:
             tools_used.append("search_technical_web")
             web_results = await self.web_search.search(query, max_results=2)
             for res in web_results:
                 title = res.get("title", "Web Link")
                 url = res.get("url", "")
                 snippet = res.get("content", "")
-                web_citations.append(
-                    Citation(
-                        source_type="TECHNICAL_WEB",
-                        title=title,
-                        url=url,
-                        excerpt=snippet[:250],
-                        authority="External Web Documentation",
+                if snippet:
+                    web_citations.append(
+                        Citation(
+                            source_type="TECHNICAL_WEB",
+                            title=title,
+                            url=url,
+                            excerpt=snippet[:250],
+                            authority="External Web Documentation",
+                        )
                     )
-                )
-                context_blocks.append(f"🌐 [Web: {title}]: {snippet[:250]}")
+
+        all_citations = citations + web_citations
+        context_blocks = []
+        for c in all_citations:
+            context_blocks.append(f"📌 [{c.title}]: {c.excerpt}")
 
         combined_context = "\n\n".join(context_blocks)
-        all_citations = staff_citations + web_citations
+        return {
+            "citations": all_citations,
+            "combined_context": combined_context,
+            "tools_used": tools_used,
+        }
 
-        # Step 3: Synthesize response with Gemini (Temperature 0)
+    async def _verify_evidence_node(self, state: AgentState) -> Dict[str, Any]:
+        citations = state.get("citations", [])
+        has_staff_evidence = any(c.source_type in ["STAFF_DISCORD", "OFFICIAL_DOCUMENT"] for c in citations)
+        if not citations:
+            status = "ESCALATED_TA"
+            escalated = True
+        elif has_staff_evidence:
+            status = "BOT_ANSWERED"
+            escalated = False
+        else:
+            status = "BOT_ANSWERED"
+            escalated = False
+        return {"status": status, "escalated": escalated}
+
+    async def _synthesize_answer_node(self, state: AgentState) -> Dict[str, Any]:
+        query = state["query"]
+        combined_context = state.get("combined_context", "")
+        status = state.get("status", "BOT_ANSWERED")
+
         synthesized_text = ""
         if llm_client:
             try:
@@ -79,7 +137,6 @@ class GroundedAssistant:
                     f"CÂU HỎI HỌC VIÊN: {query}"
                 )
 
-                
                 config = types.GenerateContentConfig(temperature=0.0) if types else None
                 llm_resp = await asyncio.to_thread(
                     llm_client.models.generate_content,
@@ -102,7 +159,10 @@ class GroundedAssistant:
                     "Mình đã chuyển câu hỏi tới các anh chị Lab Coach / TA để hỗ trợ bạn sớm nhất nhé!"
                 )
 
-        # Log interaction to bot_messages table
+        return {"response_text": synthesized_text}
+
+    async def _log_interaction_node(self, state: AgentState) -> Dict[str, Any]:
+        req = state["request"]
         try:
             async with aiosqlite.connect(settings.DATABASE_PATH) as db:
                 await db.execute(
@@ -111,21 +171,47 @@ class GroundedAssistant:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     (
-                        request.message_id, request.guild_id, request.channel_id, request.user_id,
-                        query, synthesized_text, "LOGISTICS" if staff_citations else "TECHNICAL", 1.0
+                        req.message_id, req.guild_id, req.channel_id, req.user_id,
+                        state["query"], state["response_text"], state["intent"], 1.0
+                    )
+                )
+                await db.execute(
+                    """
+                    INSERT INTO interactions (id, user_id, channel_id, message_id, action_type, payload_json)
+                    VALUES (?, ?, ?, ?, ?, ?);
+                    """,
+                    (
+                        f"act_{req.message_id}", req.user_id, req.channel_id, req.message_id,
+                        "ANSWER", json.dumps({"intent": state["intent"], "status": state["status"]})
                     )
                 )
                 await db.commit()
         except Exception:
             pass
+        return {}
+
+    async def answer(self, request: AskRequest) -> Answer:
+        initial_state: AgentState = {
+            "request": request,
+            "query": "",
+            "intent": "LOGISTICS",
+            "citations": [],
+            "combined_context": "",
+            "response_text": "",
+            "status": "OPEN",
+            "escalated": False,
+            "tools_used": [],
+        }
+
+        final_state = await self.workflow.ainvoke(initial_state)
 
         return Answer(
-            text=synthesized_text,
-            intent="LOGISTICS" if staff_citations else "TECHNICAL",
-            confidence=1.0 if staff_citations else 0.8,
-            citations=all_citations,
-            status="BOT_ANSWERED",
-            escalated=False,
-            knowledge_freshness=datetime.now(timezone.utc),
-            tools_used=tools_used,
+            text=final_state["response_text"],
+            intent=final_state["intent"],
+            confidence=1.0 if final_state["citations"] else 0.5,
+            citations=final_state["citations"],
+            status=final_state["status"],
+            escalated=final_state["escalated"],
+            knowledge_freshness=datetime.now(timezone.utc) if final_state["citations"] else None,
+            tools_used=final_state["tools_used"],
         )
