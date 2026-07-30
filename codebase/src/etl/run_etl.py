@@ -1,6 +1,6 @@
 """
 ETL Runner CLI Script
-Chạy toàn bộ Pipeline ETL: Làm sạch dữ liệu Discord thô -> Trích xuất Knowledge Triples -> Xuất data/extracted_triples.json
+Chạy toàn bộ Pipeline ETL: Làm sạch dữ liệu Discord thô -> Deep Mining Triples -> Xuất data/extracted_triples.json
 """
 
 import sys
@@ -41,6 +41,7 @@ def run_etl():
     print(f"📁 Phát hiện tổng cộng: {len(json_files)} file JSON export từ Discord.")
     
     all_cleaned_messages = []
+    raw_files_data = []
     total_raw_messages = 0
     total_kept_messages = 0
     total_filtered_bot = 0
@@ -48,6 +49,10 @@ def run_etl():
     
     for fpath in json_files:
         try:
+            with open(fpath, "r", encoding="utf-8") as rf:
+                fdata = json.load(rf)
+                raw_files_data.append((fdata, fpath.name))
+                
             msgs, meta = load_and_clean_json_file(fpath)
             stats = meta["stats"]
             
@@ -69,8 +74,12 @@ def run_etl():
     print(f"   • Số tin nhắn rác/nhiễu bị lọc:    {total_filtered_noise:,} tin nhắn")
     print(f"   🎯 TỶ LỆ LỌC RÁC & NHIỄU:           {filter_rate:.2f}%")
     
-    print("\n🔍 ĐANG TRÍCH XUẤT KNOWLEDGE TRIPLES...")
-    extraction_result: ExtractionResult = extract_triples_from_corpus(all_cleaned_messages, include_ground_truth=True)
+    print("\n🔍 ĐANG TRÍCH XUẤT KNOWLEDGE TRIPLES VÀ THỜI GIAN/CHỦ ĐỀ THREADS...")
+    extraction_result: ExtractionResult = extract_triples_from_corpus(
+        all_cleaned_messages,
+        raw_files_data=raw_files_data,
+        include_ground_truth=True
+    )
     
     output_file = data_dir / "extracted_triples.json"
     output_data = {
@@ -90,8 +99,8 @@ def run_etl():
         
     print(f"\n✅ ĐÃ XUẤT KẾT QUẢ THÀNH CÔNG:")
     print(f"   • Thư mục đầu ra: {output_file}")
-    print(f"   • Tổng số Triples trích xuất:  {len(extraction_result.triples)} triples")
-    print(f"   • Tổng số Entities ghi nhận: {len(extraction_result.entities)} entities")
+    print(f"   • Tổng số Triples trích xuất:  {len(extraction_result.triples):,} triples")
+    print(f"   • Tổng số Entities ghi nhận: {len(extraction_result.entities):,} entities")
     print("=" * 60)
 
 
