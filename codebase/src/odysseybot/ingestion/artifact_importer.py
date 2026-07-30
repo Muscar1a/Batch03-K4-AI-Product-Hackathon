@@ -27,8 +27,12 @@ class ArtifactImporter:
         if not json_path.exists():
             return (0, 0)
 
-        with open(json_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return (0, 0)
+
 
         guild = data.get("guild", {})
         channel = data.get("channel", {})

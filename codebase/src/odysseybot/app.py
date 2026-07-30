@@ -65,8 +65,14 @@ def main():
         if message.author == bot.user:
             return
 
+        # If message is a command like !hoi, let commands handler process it
+        if message.content.startswith("!hoi"):
+            await bot.process_commands(message)
+            return
+
+        # Otherwise, check for direct bot mentions
         if bot.user and bot.user in message.mentions:
-            query = message.content.replace(f"<@{bot.user.id}>", "").strip()
+            query = message.content.replace(f"<@{bot.user.id}>", "").replace(f"<@!{bot.user.id}>", "").strip()
             if query:
                 async with message.channel.typing():
                     req = AskRequest(
@@ -82,6 +88,7 @@ def main():
                 return
 
         await bot.process_commands(message)
+
 
     bot.run(token)
 
