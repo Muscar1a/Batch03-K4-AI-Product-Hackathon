@@ -71,8 +71,10 @@ def main():
             message_id=message_id,
             text=text,
         )
+        answer = await assistant.answer(req)
         citation_lines = []
         if answer.citations:
+
             for c in answer.citations:
                 if c.source_type in ["STAFF_DISCORD", "LEARNER_DISCORD"]:
                     citation_lines.append(f"- {c.url} - `{c.title}` ({c.authority})")
