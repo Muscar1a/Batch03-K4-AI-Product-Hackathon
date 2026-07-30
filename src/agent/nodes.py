@@ -383,7 +383,7 @@ def memory_extractor_and_router_node(state: ChatbotState) -> Dict[str, Any]:
             "target_tool": "cp_checklist_tool",
             "extracted_user_facts": extracted_facts
         }
-    if any(kw in last_user_msg for kw in ["tạo ticket", "gửi ticket", "xác nhận ticket", "đồng ý tạo", "tạo giúp"]):
+    if any(kw in last_user_msg for kw in ["tạo bài đăng", "đăng bài", "tạo thread", "tạo ticket", "gửi ticket", "xác nhận ticket", "đồng ý tạo", "tạo giúp", "đồng ý"]):
         return {
             "intent": "EXECUTE_TOOL",
             "target_tool": "ta_escalation_tool",
@@ -494,8 +494,8 @@ def ticket_confirmation_node(state: ChatbotState) -> Dict[str, Any]:
     response = (
         "📩 **[Hỗ trợ Chuyển tiếp TA / Lab Coach]**\n\n"
         "Mình đã ghi nhận câu hỏi / khó khăn bạn đang gặp phải.\n"
-        "❓ **Bạn có muốn mình tạo Ticket gửi yêu cầu trực tiếp tới các anh chị TA / Lab Coach (@LabCoach) tại kênh hỗ trợ <#1530221989157929090> không?**\n\n"
-        "👉 *Nhập `!hoi tạo ticket` hoặc `!hoi đồng ý` để mình gửi yêu cầu ngay cho TA nhé!*"
+        "❓ **Bạn có muốn mình tạo một bài đăng (thread) mới trong kênh <#1530221989157929090> để các anh chị TA/Lab Coach (@LabCoach) và các bạn học hỗ trợ trực tiếp không?**\n\n"
+        "👉 *Nhập `!hoi tạo bài đăng`, `!hoi tạo ticket` hoặc `!hoi đồng ý` để mình gửi ngay nhé!*"
     )
     return {
         "final_response": format_discord_channel_links(response),
