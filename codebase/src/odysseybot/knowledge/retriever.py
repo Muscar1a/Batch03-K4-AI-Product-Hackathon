@@ -45,44 +45,79 @@ class KnowledgeRetriever:
 
         seen_ids = set()
 
-        # 1. Search SQLite FTS5 Virtual Table (fts_source_messages)
+        # 1. Search SQLite FTS5 Virtual Table (fts_source_messages) or Exact Author Name Match
         if self.db_path.exists() and clean_query:
-            fts_term = " OR ".join(words) if words else clean_query
+            # Check if query asks about a specific username/author (e.g., "plinhxg có bao nhiêu tin nhắn", "tienes2810")
             async with aiosqlite.connect(self.db_path) as db:
                 try:
-                    async with db.execute(
-                        """
-                        SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
-                        FROM fts_source_messages fts
-                        JOIN source_messages sm ON fts.id = sm.id
-                        WHERE fts_source_messages MATCH ? AND LENGTH(sm.content) > 30
-                        ORDER BY bm25(fts_source_messages) ASC, sm.timestamp DESC
-                        LIMIT ?;
-                        """,
-                        (fts_term, limit)
-                    ) as cursor:
-                        async for row in cursor:
-                            msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
-                            if msg_id not in seen_ids:
-                                seen_ids.add(msg_id)
-                                ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
-                                target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
-                                cname = channel_name.strip() if channel_name else "kênh"
-                                if not cname.startswith("#"):
-                                    cname = f"#{cname}"
-                                citations.append(
-                                    Citation(
-                                        source_type="STAFF_DISCORD" if is_staff else "LEARNER_DISCORD",
-                                        title=cname,
-                                        url=f"<#{channel_id}>",
-                                        excerpt=content[:600],
-                                        authority=f"bởi {author_name} - https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
-
-                                        source_timestamp=ts_dt,
+                    # Check exact author match first
+                    for w in words:
+                        async with db.execute(
+                            """
+                            SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
+                            FROM source_messages sm
+                            WHERE LOWER(sm.author_name) = ?
+                            ORDER BY sm.timestamp DESC
+                            LIMIT ?;
+                            """,
+                            (w.lower(), limit)
+                        ) as cursor:
+                            async for row in cursor:
+                                msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
+                                if msg_id not in seen_ids:
+                                    seen_ids.add(msg_id)
+                                    ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
+                                    target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
+                                    cname = channel_name.strip() if channel_name else "kênh"
+                                    if not cname.startswith("#"):
+                                        cname = f"#{cname}"
+                                    citations.append(
+                                        Citation(
+                                            source_type="STAFF_DISCORD" if is_staff else "LEARNER_DISCORD",
+                                            title=cname,
+                                            url=f"<#{channel_id}>",
+                                            excerpt=content[:600],
+                                            authority=f"bởi {author_name} - https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
+                                            source_timestamp=ts_dt,
+                                        )
                                     )
-                                )
+
+                    # If no exact author match, use FTS5 MATCH
+                    if not citations:
+                        fts_term = " OR ".join(words) if words else clean_query
+                        async with db.execute(
+                            """
+                            SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp, sm.is_staff
+                            FROM fts_source_messages fts
+                            JOIN source_messages sm ON fts.id = sm.id
+                            WHERE fts_source_messages MATCH ? AND LENGTH(sm.content) > 30
+                            ORDER BY bm25(fts_source_messages) ASC, sm.timestamp DESC
+                            LIMIT ?;
+                            """,
+                            (fts_term, limit)
+                        ) as cursor:
+                            async for row in cursor:
+                                msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp, is_staff = row
+                                if msg_id not in seen_ids:
+                                    seen_ids.add(msg_id)
+                                    ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
+                                    target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
+                                    cname = channel_name.strip() if channel_name else "kênh"
+                                    if not cname.startswith("#"):
+                                        cname = f"#{cname}"
+                                    citations.append(
+                                        Citation(
+                                            source_type="STAFF_DISCORD" if is_staff else "LEARNER_DISCORD",
+                                            title=cname,
+                                            url=f"<#{channel_id}>",
+                                            excerpt=content[:600],
+                                            authority=f"bởi {author_name} - https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
+                                            source_timestamp=ts_dt,
+                                        )
+                                    )
                 except Exception:
                     pass
+
 
         # 2. Search Knowledge Graph DB (GraphStore NetworkX projection)
         if len(citations) < limit and self.graph_store and clean_query:

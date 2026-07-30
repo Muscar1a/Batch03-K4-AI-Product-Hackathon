@@ -180,6 +180,16 @@ class GroundedAssistant:
                 )
                 if llm_resp and llm_resp.text:
                     synthesized_text = llm_resp.text.strip()
+
+                    # Prune citations if the synthesized response states no information was found
+                    if any(phrase in synthesized_text.lower() for phrase in ["không tìm thấy", "chưa có thông tin", "không thể xác định", "0 bài đăng"]):
+                        # Filter to only keep citations whose author is explicitly mentioned in the response
+                        relevant_citations = []
+                        for c in all_citations:
+                            author_clean = c.authority.split("bởi ")[-1].split(" - ")[0].strip().lower()
+                            if author_clean and author_clean in synthesized_text.lower():
+                                relevant_citations.append(c)
+                        all_citations = relevant_citations
             except Exception:
                 pass
 
@@ -196,8 +206,10 @@ class GroundedAssistant:
                     "Hiện tại hệ thống chưa tìm thấy thông tin chính thức từ BTC về nội dung này. "
                     "Mình đã chuyển câu hỏi tới các anh chị Lab Coach / TA để hỗ trợ bạn sớm nhất nhé!"
                 )
+                all_citations = []
 
-        return {"response_text": synthesized_text}
+        return {"response_text": synthesized_text, "citations": all_citations}
+
 
     async def _log_interaction_node(self, state: AgentState) -> Dict[str, Any]:
 
