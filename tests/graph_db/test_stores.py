@@ -3,12 +3,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.graph_db import (
+from codebase.src.graph_db import (
     GraphStore,
     GraphStoreCorruptionError,
     MemoryStore,
     MemoryStoreCorruptionError,
 )
+
 
 
 class GraphStoreTests(unittest.TestCase):
