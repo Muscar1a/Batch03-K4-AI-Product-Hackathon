@@ -108,8 +108,8 @@ def query_extracted_triples(query: str, limit: int = 5) -> List[Dict[str, Any]]:
     except Exception:
         return []
 
-def search_discord_crawl_data(query: str, limit: int = 2) -> List[Dict[str, str]]:
-    """Tra cứu thông minh bằng Relevance Scoring trên 285 file crawl thô để tìm đúng Thread cụ thể nhất."""
+def search_discord_crawl_data(query: str, limit: int = 1) -> List[Dict[str, str]]:
+    """Tra cứu thông minh bằng Relevance Scoring trên 285 file crawl thô để tìm ĐÚNG 1 Thread chuẩn xác nhất."""
     if not CRAWL_DIR or not os.path.exists(CRAWL_DIR):
         return []
     
@@ -132,6 +132,14 @@ def search_discord_crawl_data(query: str, limit: int = 2) -> List[Dict[str, str]
                 if kw in fname_clean:
                     score += 5
                     
+            if "miễn phí" in query_lower or "free" in query_lower or "công cụ" in query_lower:
+                if "free" in fname_clean or "miễn phí" in fname_clean or "công cụ" in fname_clean:
+                    score += 15
+            if "rag" in query_lower and "rag" in fname_clean:
+                score += 15
+            if "cấu trúc" in query_lower or "thư mục" in query_lower:
+                if "cấu trúc" in fname_clean or "thư mục" in fname_clean:
+                    score += 15
             if "macos" in query_lower and "macos" in fname_clean:
                 score += 15
             if "windows" in query_lower and "windows" in fname_clean:
@@ -178,8 +186,20 @@ def search_discord_crawl_data(query: str, limit: int = 2) -> List[Dict[str, str]
         
     return results
 
-# Knowledge Base chính thức mở rộng từ BTC với Citation dạng Link Discord Tag
+# Knowledge Base chính thức mở rộng từ BTC với Citation dạng Link Discord Tag chính xác
 KNOWLEDGE_BASE = {
+    "free_coding_agents": {
+        "title": "Các Công Cụ Code Tích Hợp AI Miễn Phí (Free Coding Agents)",
+        "keywords": ["công cụ code ai miễn phí", "ai coding miễn phí", "free coding agents", "công cụ ai miễn phí", "code ai miễn phí", "công cụ code tích hợp ai"],
+        "content": "Danh sách các công cụ AI coding miễn phí nổi bật được chia sẻ bởi học viên !G18-T058-Nguyễn Duy Bách-01844:\n1. Cursor: Miễn phí thử nghiệm với GPT-4o-mini & Claude-3.5-haiku.\n2. Windsurf (Codeium): Miễn phí AI Flow & Tab Autocomplete.\n3. GitHub Copilot: Miễn phí cho Học sinh/Sinh viên qua GitHub Student Pack.\n4. Antigravity IDE (Gemini Code Assist): Miễn phí kết nối API token cá nhân.\n5. OpenCode AI & Kiro AI: Tích hợp mã nguồn mở cho VS Code.",
+        "citation": "Thread <#1531559503785496676> (bởi !G18-T058-Nguyễn Duy Bách-01844)"
+    },
+    "cau_truc_rag": {
+        "title": "Cấu trúc Thư mục Dự án RAG Chuẩn Production",
+        "keywords": ["cấu trúc rag", "thư mục rag", "rag production", "cấu trúc dự án rag", "cấu trúc thư mục"],
+        "content": "Cấu trúc thư mục RAG chuẩn Production được chia sẻ bởi học viên T054-Lê Nguyễn Minh Quang-01248:\n- Root: requirements.txt, .env, config.yaml, README.md\n- Xử lý dữ liệu: src/ingestion/, src/chunking/, src/embeddings/\n- Lưu trữ & Truy xuất: src/vectordb/, src/retrieval/\n- LLM Core: src/prompts/, src/llm/\n- API & Utils: src/api/, src/utils/\n- Log & Test: tests/, logs/\nXem chi tiết tại Thread: <#1531322415395901522>.",
+        "citation": "Thread <#1531322415395901522> (bởi T054-Lê Nguyễn Minh Quang-01248)"
+    },
     "antigravity_fix": {
         "title": "Fix Lỗi AI Log Antigravity IDE (No new prompts / overview.txt)",
         "keywords": ["antigravity", "anti gravity", "agy", "log_antigravity", "fix antigravity", "lỗi antigravity", "brain dir", "transcript.jsonl"],
@@ -353,26 +373,12 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
     user_os = next((f["value"] for f in reversed(user_facts) if f.get("fact_type") == "OS"), None)
     
     # 1. Tra cứu trực tiếp từ data/extracted_triples.json
-    extracted_triples = query_extracted_triples(last_user_msg, limit=4)
+    extracted_triples = query_extracted_triples(last_user_msg, limit=3)
     for t in extracted_triples:
         retrieved_parts.append(f"🌐 [Knowledge Graph Triple]: ({t['subject']}) -[:{t['relation']}]-> ({t['object']})")
         citations.append(f"KG ({t['proof']})")
 
-    # 2. Tra cứu Graph Engine (NetworkX) nếu có
-    if graph_engine:
-        entities = graph_engine.find_entities(last_user_msg, limit=3)
-        for entity in entities:
-            traversal = graph_engine.get_context(entity["id"], max_hops=2, limit=3)
-            for path in traversal:
-                for edge in path.get("edges", []):
-                    subj = edge.get("subject")
-                    rel = edge.get("relation")
-                    obj = edge.get("object")
-                    src = edge.get("source", "KGDB")
-                    retrieved_parts.append(f"🌐 [Graph Store]: ({subj}) -[:{rel}]-> ({obj})")
-                    citations.append(f"GraphStore ({src})")
-
-    # 3. Tra cứu Knowledge Base chính thức
+    # 2. Tra cứu Knowledge Base chính thức
     normalized_query = last_user_msg.replace("anti gravity", "antigravity")
     for key, data in KNOWLEDGE_BASE.items():
         matched = False
@@ -391,10 +397,10 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
             retrieved_parts.append(f"📌 **{data['title']}**:\n{content}")
             citations.append(data["citation"])
 
-    # 4. Tra cứu trực tiếp 285 file Crawl thô khi chưa có fake CP
+    # 3. Tra cứu trực tiếp 285 file Crawl thô khi chưa có fake CP
     has_fake_cp = any(f"cp{i}" in normalized_query or f"checkpoint {i}" in normalized_query for i in range(7, 20))
     if not has_fake_cp:
-        crawl_matches = search_discord_crawl_data(last_user_msg, limit=2)
+        crawl_matches = search_discord_crawl_data(last_user_msg, limit=1)
         for c in crawl_matches:
             retrieved_parts.append(f"💬 **[Thảo luận Discord]: {c['title']}** (bởi {c.get('author', 'Học viên')})\n{c['content']}")
             citations.append(c["citation"])
@@ -410,7 +416,7 @@ def kg_retriever_node(state: ChatbotState) -> Dict[str, Any]:
 
     return {
         "retrieved_context": "\n\n".join(retrieved_parts),
-        "citations": list(set(citations))
+        "citations": citations
     }
 
 def tool_execution_node(state: ChatbotState) -> Dict[str, Any]:
@@ -449,22 +455,38 @@ def guardrail_refusal_node(state: ChatbotState) -> Dict[str, Any]:
 
 def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
     """
-    Node 6: AI Tutor Synthesizer mềm mại, khai thác tri thức từ Knowledge Graph Triples (extracted_triples.json).
+    Node 6: AI Tutor Synthesizer minh bạch (HAX G2) - Tuyệt đối không sinh chuỗi placeholder thô dạng <#ID_THREAD>.
     """
     context = state.get("retrieved_context", "")
-    citations = state.get("citations", [])
+    raw_citations = state.get("citations", [])
     messages = state.get("messages", [])
     user_query = messages[-1].get("content", "") if messages else ""
     
+    citations = list(dict.fromkeys(raw_citations))
+    
+    best_citation = None
+    thread_citations = [c for c in citations if "Thread <#" in c]
+    kb_citations = [c for c in citations if "Thread <#" not in c and "Không có nguồn" not in c]
+    
+    if thread_citations:
+        best_citation = thread_citations[0]
+    elif kb_citations:
+        best_citation = kb_citations[0]
+    elif citations:
+        best_citation = citations[0]
+
     if llm_client:
         try:
             system_prompt = (
-                "Bạn là một Trợ lý AI Học tập (AI Tutor) vô cùng tinh tế, chu đáo và trung thực cho khóa học AI Thực Chiến.\n"
-                "QUY TẮC NGHIÊM NGẶT (HAX G10 GUARDRAIL):\n"
-                "1. CHỈ TRẢ LỜI dựa trên thông tin thực tế có trong NGỮ CẢNH TRA CỨU (Bao gồm Knowledge Graph Triples, Knowledge Base và Thảo luận Discord).\n"
-                "2. Nếu trong NGỮ CẢNH không có giải đáp cho câu hỏi của học viên, hãy thẳng thắn nói 'Chưa tìm thấy căn cứ chính thức của BTC cho câu hỏi này' và hướng dẫn học viên tag @LabCoach.\n"
-                "3. KHI TRÍCH DẪN NGUỒN: Ưu tiên dùng tag link Discord dạng `<#ID_THREAD>` hoặc tài liệu trích dẫn ngắn gọn trong ngữ cảnh. KHÔNG dán tên Server/Guild dài thô.\n"
-                "4. Giữ văn phong lịch sự, ấm áp, rõ ràng.\n\n"
+                "Bạn là một Trợ lý AI Học tập (AI Tutor) vô cùng tinh tế, chu đáo và minh bạch cho khóa học AI Thực Chiến.\n"
+                "QUY TẮC PHÂN LOẠI NGUỒN VÀ TRÁNH PLACEHOLDER (HAX G2 TRANSPARENCY):\n"
+                "1. NẾU NGUỒN LÀ BÀI VIẾT / CHIA SẺ CỦA HỌC VIÊN:\n"
+                "   -> BẮT BUỘC mở đầu bằng: 'Dưới đây là phần chia sẻ kinh nghiệm của học viên [Tên Học Viên trong ngữ cảnh]...'\n"
+                "   -> TUYỆT ĐỐI KHÔNG ghi các từ placeholder mẫu như '<#ID_THREAD>' hay '<#ID...>' vào thân bài trả lời.\n"
+                "2. NẾU NGUỒN LÀ TÀI LIỆU CHÍNH THỨC CỦA BTC HOẶC LAB COACH:\n"
+                "   -> Trình bày trực tiếp là quy định/thông tin chính thức từ BTC.\n"
+                "3. CHỈ NÓI 'Chưa tìm thấy căn cứ chính thức' KHI VÀ CHỈ KHI trong ngữ cảnh hoàn toàn KHÔNG CÓ dữ liệu.\n"
+                "4. Giữ văn phong lịch sự, ấm áp, mạch lạc.\n\n"
                 f"NGỮ CẢNH DỮ LIỆU TRA CỨU:\n{context}\n\n"
                 f"CÂU HỎI CỦA HỌC VIÊN: {user_query}"
             )
@@ -488,14 +510,15 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
                 )
                 
             if llm_response and llm_response.text:
-                citation_str = "\n".join([f"- *Nguồn: {c}*" for c in citations if c != "Không có nguồn"])
-                if citation_str:
-                    raw_resp = f"{llm_response.text.strip()}\n\n📌 **Trích dẫn minh bạch**:\n{citation_str}"
+                # Làm sạch các chuỗi placeholder thô nếu LLM lỡ sinh ra
+                clean_text = llm_response.text.strip().replace("<#ID_THREAD>", "").replace("<#ID...>", "")
+                if best_citation and best_citation != "Không có nguồn":
+                    raw_resp = f"{clean_text}\n\n📌 **Trích dẫn minh bạch**:\n- *Nguồn chính xác: {best_citation}*"
                 else:
-                    raw_resp = llm_response.text.strip()
+                    raw_resp = clean_text
                 return {
                     "final_response": format_discord_channel_links(raw_resp),
-                    "citations": citations
+                    "citations": [best_citation] if best_citation else []
                 }
         except Exception:
             pass
@@ -507,7 +530,7 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
             "📩 Mình đã ghi nhận và chuyển câu hỏi tới các anh chị **Lab Coach / TA** (@LabCoach) để hỗ trợ bạn sớm nhất nhé!"
         )
     else:
-        citation_str = "\n".join([f"- *Nguồn: {c}*" for c in citations])
+        citation_str = f"- *Nguồn chính xác: {best_citation}*" if best_citation else ""
         response = (
             f"🤖 **[Trợ lý Học viên AI]**\n\n"
             f"{context}\n\n"
@@ -516,5 +539,5 @@ def answer_synthesizer_node(state: ChatbotState) -> Dict[str, Any]:
         
     return {
         "final_response": format_discord_channel_links(response),
-        "citations": citations
+        "citations": [best_citation] if best_citation else []
     }
