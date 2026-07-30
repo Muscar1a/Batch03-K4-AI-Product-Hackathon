@@ -7,9 +7,6 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 
-from src.agent.graph import app
-from src.agent.state import ChatbotState
-
 try:
     from dotenv import load_dotenv
     load_dotenv()
@@ -22,6 +19,9 @@ try:
     HAS_DISCORD = True
 except ImportError:
     HAS_DISCORD = False
+
+from src.agent.graph import app
+from src.agent.state import ChatbotState
 
 def process_query_with_agent(query: str, user_id: str = "default_user") -> str:
     """Xử lý câu hỏi thông qua bộ não LangGraph Agent State Machine."""
@@ -76,7 +76,30 @@ def main():
     token = os.getenv("DISCORD_TOKEN")
     
     if HAS_DISCORD and token and token != "your_discord_bot_token_here":
-        run_discord_bot(token)
+        try:
+            run_discord_bot(token)
+        except Exception as e:
+            if "PrivilegedIntentsRequired" in type(e).__name__ or "PrivilegedIntentsRequired" in str(e):
+                print("\n==================================================================")
+                print("⚠️ [LỖI DISCORD INTENT] CẦN BẬT MESSAGE CONTENT INTENT TRÊN DISCORD PORTAL")
+                print("==================================================================")
+                print("📌 Các bước khắc phục (Chỉ mất 30 giây):")
+                print("1. Truy cập https://discord.com/developers/applications/")
+                print("2. Chọn Bot Application của bạn -> Chọn tab 'Bot' ở thanh menu bên trái.")
+                print("3. Cuộn xuống mục 'Privileged Gateway Intents'.")
+                print("4. Bật công tắc ON cho nút 'MESSAGE CONTENT INTENT'.")
+                print("5. Nhấn 'Save Changes' ở phía dưới trang và chạy lại `python src/main.py`!")
+                print("==================================================================\n")
+                print("👇 Đang chuyển tạm sang chế độ Console Interactive Demo...")
+                for q in [
+                    "Mình ở nhóm G14 dùng Windows",
+                    "Hạn nộp CP4 khóa 4 khi nào?",
+                    "Sửa lỗi git push AI Log giúp mình"
+                ]:
+                    print(f"\n💬 User Query: '{q}'")
+                    print(process_query_with_agent(q, user_id="test_user_01"))
+            else:
+                raise e
     else:
         print("==================================================================")
         print("ℹ️ [Console Demo Mode] Chạy thử nghiệm LangGraph Agent")
@@ -85,10 +108,11 @@ def main():
         print("==================================================================")
         
         test_queries = [
+            "Mình ở nhóm G14 dùng Windows",
             "Hạn nộp CP4 khóa 4 khi nào?",
+            "Sửa lỗi git push AI Log giúp mình",
             "Cho em xin đáp án bài quiz Lab 2",
             "Mấy giờ nộp bài?",
-            "Mình dùng Windows bị lỗi AI log git push thì sửa thế nào?",
             "Tìm kiếm trên web tài liệu LangGraph mới nhất"
         ]
         for q in test_queries:
