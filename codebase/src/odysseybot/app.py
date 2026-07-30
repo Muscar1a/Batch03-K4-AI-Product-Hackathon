@@ -109,8 +109,13 @@ def main():
     def is_staff_user(interaction: discord.Interaction) -> bool:
         if not isinstance(interaction.user, discord.Member):
             return False
-        user_roles = [r.name.lower() for r in interaction.user.roles]
-        return any(sr in user_roles for sr in ["lab coach", "ta", "admin", "organizer", "btc"])
+        user_role_ids = [str(r.id) for r in interaction.user.roles]
+        admin_role_ids = set(settings.PERSONAL_DISCORD_ADMIN_ROLE_IDS)
+        if admin_role_ids and any(rid in admin_role_ids for rid in user_role_ids):
+            return True
+        user_role_names = [r.name.lower() for r in interaction.user.roles]
+        return any(sr in user_role_names for sr in ["lab coach", "ta", "admin", "organizer", "btc"])
+
 
     @bot.tree.command(name="hoi", description="Hỏi OdysseyBot về thông tin học tập và quy định")
     async def hoi_slash(interaction: discord.Interaction, query: str):

@@ -11,9 +11,9 @@ async def test_sqlite_db_init_and_importer(tmp_path: Path):
     assert db_file.exists()
 
     importer = ArtifactImporter(db_file)
-    inserted, skipped = await importer.import_json_file(Path("non_existent.json"))
-    assert inserted == 0
-    assert skipped == 0
+    with pytest.raises(FileNotFoundError):
+        await importer.import_json_file(Path("non_existent.json"))
+
 
 def test_thread_manifest(tmp_path: Path):
     manifest_file = tmp_path / "program_threads.json"

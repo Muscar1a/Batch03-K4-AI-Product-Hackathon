@@ -95,13 +95,14 @@ class KnowledgeRetriever:
                         snippet = " ; ".join(edges_desc)
                         citations.append(
                             Citation(
-                                source_type="STAFF_DISCORD",
+                                source_type="LEARNER_DISCORD",
                                 title=f"Knowledge Graph (Entity: {p.get('entities', [clean_query])[0]})",
                                 url="file://data/graph_store.json",
                                 excerpt=f"🌐 Context Graph: {snippet}",
                                 authority="Knowledge Graph DB",
                             )
                         )
+
             except Exception:
                 pass
 

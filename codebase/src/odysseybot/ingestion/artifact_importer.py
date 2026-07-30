@@ -25,13 +25,14 @@ class ArtifactImporter:
             Tuple[inserted_count, skipped_count]
         """
         if not json_path.exists():
-            return (0, 0)
+            raise FileNotFoundError(f"Export file not found: {json_path}")
 
         try:
             with open(json_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-        except Exception:
-            return (0, 0)
+        except Exception as err:
+            raise ValueError(f"Invalid export JSON artifact at {json_path}: {err}")
+
 
 
         guild = data.get("guild", {})
@@ -57,8 +58,13 @@ class ArtifactImporter:
                 roles = author.get("roles", [])
                 roles_json = json.dumps(roles, ensure_ascii=False)
 
-                # Determine staff authority (e.g. Learner vs Lab Coach / TA / Admin)
-                is_staff = 1 if any(r.get("name", "").lower() in ["lab coach", "ta", "admin", "organizer", "btc"] for r in roles) else 0
+                # Determine staff authority using role IDs if configured, else role names
+                role_ids = [str(r.get("id")) for r in roles if r.get("id")]
+                admin_role_ids = set(settings.PERSONAL_DISCORD_ADMIN_ROLE_IDS)
+                has_admin_id = any(rid in admin_role_ids for rid in role_ids) if admin_role_ids else False
+                has_staff_name = any(r.get("name", "").lower() in ["lab coach", "ta", "admin", "organizer", "btc"] for r in roles)
+                is_staff = 1 if (has_admin_id or has_staff_name) else 0
+
 
                 content = msg.get("content", "")
                 timestamp = msg.get("timestamp", "")
