@@ -67,6 +67,8 @@ Loại: [x] Tối ưu tính năng có sẵn  [ ] Tính năng mới
 * **Automation**: **Conditional Automation**
   * *Lý do theo Cost-of-Error*: Sai mốc deadline gây thiệt hại trực tiếp đến điểm số học viên (sửa rất đắt). Do đó: Case có nguồn rõ ràng $\rightarrow$ Bot trả lời ngay; Case mơ hồ hoặc không có nguồn $\rightarrow$ Từ chối và chuyển giao TA.
 
+* **Cơ chế grounding và memory của prototype**: Triples từ pipeline ETL được lưu trong Knowledge Graph bằng NetworkX và truy vấn tối đa 2 chặng, luôn giữ `source` và `confidence` để Answer Synthesizer tạo trích dẫn. Dynamic Memory chỉ lưu fact theo `user_id` (OS, nhóm, issue), khử trùng lặp và dùng lại ở lượt sau; không chia sẻ fact giữa các học viên.
+
 * **§4b. Nguyên tắc HAX / PAIR đã áp dụng**:
 
 | Nguyên tắc | Áp dụng cụ thể vào đâu trong prototype |
