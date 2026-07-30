@@ -49,6 +49,16 @@ class GraphStoreTests(unittest.TestCase):
         self.assertEqual(paths[1]["entities"][-1], "overview.txt")
         self.assertEqual(paths[1]["edges"][0]["source"], "a.md")
 
+    def test_fresh_store_does_not_reuse_previous_runtime_graph(self):
+        existing = GraphStore(self.path)
+        existing.add_triple({"subject": "Old", "relation": "HAS", "object": "Stale Edge"})
+        existing.save()
+
+        fresh = GraphStore(self.path, load_existing=False)
+
+        self.assertEqual(fresh.graph.number_of_nodes(), 0)
+        self.assertEqual(fresh.graph.number_of_edges(), 0)
+
     def test_import_file_and_incoming_traversal(self):
         input_path = Path(self.temp_dir.name) / "triples.json"
         input_path.write_text(

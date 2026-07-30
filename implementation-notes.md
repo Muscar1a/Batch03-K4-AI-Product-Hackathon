@@ -23,6 +23,8 @@ Run the targeted graph and memory tests with:
 python -m unittest discover -s tests/graph_db -p 'test_*.py'
 ```
 
-Current verification: 14 tests pass under `uv run --with networkx`; source compilation, `git diff --check`, and graphify refresh also pass. Real-data build produces 98 nodes, 148 edges, 0 invalid records, 0 unknown sources, and 2-hop queries for CP1/AI Log succeed. `uvx ruff` could not run because the sandbox could not resolve PyPI; no lint result is claimed.
+Current verification: 15 tests pass under `uv run --with networkx`; source compilation, `git diff --check`, and graphify refresh also pass. Real-data build produces 98 nodes, 148 edges, 0 invalid records, 0 unknown sources, and 2-hop queries for CP1/AI Log succeed. `uvx ruff` could not run because the sandbox could not resolve PyPI; no lint result is claimed.
+
+Updated handoff verification: 1,438 input triples produce 1,435 edges and 984 normalized nodes, with 3 intentional duplicate triples, 0 invalid records, and 0 unknown sources. The graph builder uses `load_existing=False` so refreshes replace stale runtime edges.
 
 User-test results and final Member 1 import statistics must be added here after those activities occur; they are not fabricated in this file.
