@@ -4,6 +4,7 @@ from src.agent.nodes import (
     memory_extractor_and_router_node,
     kg_retriever_node,
     tool_execution_node,
+    ticket_confirmation_node,
     clarification_node,
     guardrail_refusal_node,
     answer_synthesizer_node
@@ -31,6 +32,11 @@ class LangGraphAgentApp:
         elif intent == "AMBIGUOUS":
             clarify_update = clarification_node(current_state)
             current_state.update(clarify_update)
+            return current_state
+
+        elif intent == "ASK_TICKET_CONFIRMATION":
+            ticket_prompt_update = ticket_confirmation_node(current_state)
+            current_state.update(ticket_prompt_update)
             return current_state
             
         elif intent == "EXECUTE_TOOL":

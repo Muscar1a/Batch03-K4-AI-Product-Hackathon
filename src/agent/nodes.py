@@ -356,10 +356,15 @@ def memory_extractor_and_router_node(state: ChatbotState) -> Dict[str, Any]:
             "target_tool": "cp_checklist_tool",
             "extracted_user_facts": extracted_facts
         }
-    if "báo ta" in last_user_msg or "chuyển ta" in last_user_msg or "gọi ta" in last_user_msg or "gọi coach" in last_user_msg or "cần ta hỗ trợ" in last_user_msg:
+    if any(kw in last_user_msg for kw in ["tạo ticket", "gửi ticket", "xác nhận ticket", "đồng ý tạo", "tạo giúp"]):
         return {
             "intent": "EXECUTE_TOOL",
             "target_tool": "ta_escalation_tool",
+            "extracted_user_facts": extracted_facts
+        }
+    if any(kw in last_user_msg for kw in ["báo ta", "chuyển ta", "gọi ta", "gọi coach", "nhờ ta hỗ trợ", "cần ta hỗ trợ", "khó quá"]):
+        return {
+            "intent": "ASK_TICKET_CONFIRMATION",
             "extracted_user_facts": extracted_facts
         }
     if "bản tin" in last_user_msg or "top faq" in last_user_msg or "thống kê hôm nay" in last_user_msg:
@@ -456,6 +461,18 @@ def tool_execution_node(state: ChatbotState) -> Dict[str, Any]:
     return {
         "retrieved_context": result,
         "citations": [f"Tool Execution: {tool_name}"]
+    }
+
+def ticket_confirmation_node(state: ChatbotState) -> Dict[str, Any]:
+    response = (
+        "📩 **[Hỗ trợ Chuyển tiếp TA / Lab Coach]**\n\n"
+        "Mình đã ghi nhận câu hỏi / khó khăn bạn đang gặp phải.\n"
+        "❓ **Bạn có muốn mình tạo Ticket gửi yêu cầu trực tiếp tới các anh chị TA / Lab Coach (@LabCoach) tại kênh hỗ trợ `<#1530221989157929090>` không?**\n\n"
+        "👉 *Nhập `!hoi tạo ticket` hoặc `!hoi đồng ý` để mình gửi yêu cầu ngay cho TA nhé!*"
+    )
+    return {
+        "final_response": format_discord_channel_links(response),
+        "citations": []
     }
 
 def clarification_node(state: ChatbotState) -> Dict[str, Any]:
