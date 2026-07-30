@@ -1,4 +1,4 @@
-# SƠ ĐỒ HỆ THỐNG CHATBOT (LANGGRAPH + KNOWLEDGE GRAPH DB + DYNAMIC MEMORY)
+# SƠ ĐỒ HỆ THỐNG CHATBOT ODYSSEYBOT (LANGGRAPH STATEGRAPH + FTS5 + GRAPHSTORE)
 
 ## 0. Sơ Đồ Luồng Cơ Bản (Basic Bot Flow)
 
@@ -8,15 +8,14 @@ graph TD
     classDef memStyle fill:#162447,stroke:#9d4edd,stroke-width:2px,color:#fff;
     classDef dbStyle fill:#162447,stroke:#00f5d4,stroke-width:2px,color:#fff;
 
-    A[💬 1. Tiếp Nhận Câu Hỏi<br/>User Input từ Discord]:::stepStyle --> B[🧠 2. Dynamic Memory Engine<br/>Ghi nhớ thông tin cá nhân: OS, Group]:::memStyle
-    B --> C[🕸️ 3. Knowledge Graph DB<br/>Tra cứu câu trả lời & căn cứ trong dữ liệu Discord]:::dbStyle
-    C --> D[🤖 4. Answer & Citation<br/>Trả lời học viên kèm trích dẫn nguồn BTC]:::stepStyle
+    A[💬 1. Tiếp Nhận Câu Hỏi<br/>User Input từ Discord / !hoi / Slash Command]:::stepStyle --> B[🧠 2. LangGraph Intent Classifier<br/>Phân loại: LOGISTICS / TECHNICAL / CLARIFICATION]:::memStyle
+    B --> C[🕸️ 3. Hybrid Retriever Engine<br/>FTS5 BM25 + NetworkX GraphStore + Official Docs]:::dbStyle
+    C --> D[🤖 4. Cohesive Answer & Citation<br/>Tổng hợp mượt mà + Phân định Quyền hạn BTC vs Học viên]:::stepStyle
 ```
 
 ---
 
 ## 1. Sơ Đồ Kiến Trúc Luồng Nâng Cao (Full Advanced Architecture)
-
 
 ```mermaid
 graph TD
@@ -27,131 +26,105 @@ graph TD
     classDef toolStyle fill:#2d1b4e,stroke:#ffb703,stroke-width:2px,color:#fff;
     classDef guardStyle fill:#3d0c1e,stroke:#ff007f,stroke-width:2px,color:#fff;
 
-    User([👤 Học viên gửi câu hỏi / Discord Input]):::inputStyle --> Node1[1. Input & Dynamic Memory Extractor Node]:::nodeStyle
+    User([👤 Học viên Discord / Command]):::inputStyle --> Node1[1. classify_intent Node]:::nodeStyle
 
-    subgraph Memory_System [🧠 Dynamic Memory Engine]
-        MemoryStore[(Dynamic Memory Store<br/>data/memory_store.json)]:::dbStyle
+    subgraph LangGraph_Engine [🤖 LangGraph StateGraph Architecture]
+        Node1 -->|Check Scope / Term Length| Router{Intent & Clarification Check}:::nodeStyle
+        
+        Router -->|Mơ hồ / < 3 từ chung chung| NodeClarify[Clarification Node<br/>Yêu cầu nêu rõ thắc mắc]:::guardStyle
+        Router -->|Hợp lệ: LOGISTICS / TECHNICAL| Node2[2. retrieve_claims Node]:::nodeStyle
+        
+        Node2 --> Node3[3. verify_evidence Node]:::nodeStyle
+        Node3 -->|Có Nguồn BTC / TA| AnswerStatus1[Status: BOT_ANSWERED<br/>Escalated: False]:::nodeStyle
+        Node3 -->|Chỉ có Nguồn Học viên / Khômg Nguồn| AnswerStatus2[Status: ESCALATED<br/>Escalated: True]:::guardStyle
+        
+        AnswerStatus1 --> Node4[4. synthesize_answer Node]:::nodeStyle
+        AnswerStatus2 --> Node4
+        NodeClarify --> Node4
+
+        Node4 --> Node5[5. log_interaction Node]:::nodeStyle
     end
 
-    Node1 -->|1. Trích xuất Fact cá nhân<br/>OS, Group, Issue| MemoryStore
-    Node1 --> Router{2. Intent & Guardrail Router}:::nodeStyle
-
-    %% Routing Paths
-    Router -->|Tra cứu tri thức / Lỗi| Node3[3. KGDB Multi-Hop Retriever Node]:::nodeStyle
-    Router -->|Yêu cầu tác vụ / Tool| Node4[4. Agent Tools & Sub-Agent Dispatcher]:::toolStyle
-    Router -->|Phạm quy / Đòi đáp án quiz| NodeRefuse[Refusal Guardrail Node]:::guardStyle
-    Router -->|Mơ hồ / Thiếu ngữ cảnh| NodeClarify[Clarification Node - HAX G10]:::guardStyle
-
-    %% Databases & Tools
-    subgraph Data_Layer [🕸️ Data & Graph Engine]
-        RawData[(Raw Uncleaned Discord Data<br/>discord-crawl + 💬-chung)]:::dbStyle --> Cleaner[Data Cleaner & Triple Mining]:::dbStyle
-        Cleaner --> KGDB[(Knowledge Graph DB<br/>NetworkX / SQLite)]:::dbStyle
+    subgraph Knowledge_Layer [🕸️ Hybrid Knowledge Engine]
+        FTS5[(SQLite FTS5 BM25 Virtual Table<br/>fts_source_messages)]:::dbStyle
+        KGDB[(NetworkX Knowledge Graph DB<br/>data/graph_store.json)]:::dbStyle
+        Docs[(Tài liệu chính thức khóa học<br/>01-de-bai.md, spec.md...)]:::dbStyle
     end
 
-    subgraph Tools_Layer [🛠️ Agent Toolset]
-        WebSearch[web_search_tool]:::toolStyle
-        UpdateKB[update_knowledge_base_tool]:::toolStyle
-        GitCheck[github_repo_checker_tool]:::toolStyle
+    subgraph Ingestion_Sidecar [🔄 Atomic Ingestion Pipeline]
+        DCE[DiscordChatExporter CLI]:::toolStyle --> PartialDir[Staging Directory .partial]:::toolStyle
+        PartialDir --> Importer[ArtifactImporter<br/>Atomic Transaction & FTS Trigger]:::dbStyle
+        Importer --> ReadyDir[Ready & Imported Dirs]:::dbStyle
     end
 
-    Node3 <-->|Query 2-hop triples| KGDB
-    Node4 <-->|Execute external task| Tools_Layer
+    Node2 <-->|1. FTS5 BM25 MATCH| FTS5
+    Node2 <-->|2. Multi-hop 2-hop Context| KGDB
+    Node2 <-->|3. Strict 2-term Heading Match| Docs
 
-    %% Synthesis
-    Node3 --> Node5[5. Answer Synthesizer & Citation Node]:::nodeStyle
-    Node4 --> Node5
-    NodeClarify --> Node5
-    NodeRefuse --> Node5
-
-    Node5 --> Output([🤖 Response + Source Citation + Memory Updated]):::inputStyle
-    Node5 -.->|Cập nhật lịch sử chat| MemoryStore
+    Node5 --> Output([🤖 Response + Native Discord Channel Mentions <#channel_id>]):::inputStyle
+    Node5 -.->|Lưu Provenance & History| InteractionDB[(SQLite Database<br/>bot_messages & interactions)]:::dbStyle
 ```
 
 ---
 
-## 2. Sơ Đồ Chuyển Trạng Thái LangGraph (State Transition Machine Diagram)
+## 2. Sơ Đồ Chuyển Trạng Thái LangGraph StateGraph (State Machine Diagram)
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Idle: Tiếp nhận Message mới từ Discord
-    
-    state Idle {
-        [*] --> ExtractMemory: Phân tích User Profile & User Facts
-        ExtractMemory --> ClassifyIntent: Phân loại Intent (Logistics / Bug / Tool / Out-of-Scope)
+    [*] --> ClassifyIntent: Tiếp nhận AskRequest từ Discord (!hoi / Slash)
+
+    state ClassifyIntent {
+        [*] --> CheckBroadTerms: Kiểm tra độ dài & Từ khóa chung chung
+        CheckBroadTerms --> IntentClarification: Is Broad / Vague (< 3 từ)
+        CheckBroadTerms --> IntentValid: Is Logistics / Technical
     }
 
-    ClassifyIntent --> OutOfScope: Intent = OUT_OF_SCOPE (Đòi đáp án/chấm bài)
-    ClassifyIntent --> Ambiguous: Intent = AMBIGUOUS (Thiếu mốc CP/Khóa)
-    ClassifyIntent --> KGRetrieval: Intent = TECH_BUG / LOGISTICS
-    ClassifyIntent --> ExecuteTool: Intent = EXECUTE_TOOL
+    IntentClarification --> SynthesizeAnswer: Gợi ý học viên đặt câu hỏi cụ thể hơn
 
-    state OutOfScope {
-        [*] --> FormatRefusal: Sinh câu từ chối lịch sự (HAX G8)
+    state IntentValid {
+        [*] --> RetrieveClaims: Tra cứu FTS5 + GraphStore + Official Docs
+        RetrieveClaims --> VerifyEvidence: Phân tích Nguồn Chứng Cứ (Evidence Gate)
     }
 
-    state Ambiguous {
-        [*] --> FormatQuestion: Hỏi lại 1 câu thu hẹp scope (HAX G10)
+    state VerifyEvidence {
+        [*] --> CheckStaffAuthority: Kiểm tra Role ID & Staff Flag
+        CheckStaffAuthority --> BotAnswered: Có Nguồn BTC / TA (is_staff = 1)
+        CheckStaffAuthority --> Escalated: Chỉ có Nguồn Học viên (is_staff = 0) / Không nguồn
     }
 
-    state KGRetrieval {
-        [*] --> QueryGraph: Tra vấn Đồ thị Tri thức 2-hop
-        QueryGraph --> CheckConfidence: Đánh giá độ tin cậy Triples
-        CheckConfidence --> FallbackRAG: Confidence < 0.6
-        CheckConfidence --> SynthesizeAnswer: Confidence >= 0.6
+    BotAnswered --> SynthesizeAnswer: Cohesive Synthesis (Giọng văn khẳng định)
+    Escalated --> SynthesizeAnswer: Community Advice Synthesis (Trích dẫn kèm phân định nguồn)
+
+    state SynthesizeAnswer {
+        [*] --> GeminiGen: Sinh câu trả lời với Gemini (Temp = 0.0)
+        GeminiGen --> CleanFormat: Loại bỏ Link thô & In đậm Tiêu đề
     }
 
-    state ExecuteTool {
-        [*] --> DispatchTool: Gọi Tool (Search / Update / Git Check)
-        DispatchTool --> SynthesizeAnswer: Trả kết quả thực thi về Agent
-    }
-
-    state FallbackRAG {
-        [*] --> VectorSearch: Tìm kiếm văn bản gốc Discord
-        VectorSearch --> SynthesizeAnswer
-    }
-
-    FormatRefusal --> OutputState
-    FormatQuestion --> OutputState
-    SynthesizeAnswer --> OutputState
-
-    state OutputState {
-        [*] --> UpdateMemoryStore: Lưu Fact mới vào memory_store.json
-        UpdateMemoryStore --> SendResponse: Gửi phản hồi kèm Trích dẫn (HAX G2)
-    }
-
-    SendResponse --> [*]
+    SynthesizeAnswer --> LogInteraction: Ghi nhận Provenance vào bot_messages & interactions
+    LogInteraction --> SendDiscordResponse: Gửi phản hồi kèm Native Discord Channel Pills <#channel_id>
+    SendDiscordResponse --> [*]
 ```
 
 ---
 
-## 3. Sơ Đồ Luồng Dữ Liệu ETL & Triples Mining (Data Pipeline Diagram)
+## 3. Sơ Đồ Quy Trình Thu Thập & Đồng Bộ Dữ Liệu Nguyên Tử (Atomic Ingestion ETL)
 
 ```mermaid
 flowchart LR
-    subgraph Raw_Files [Dữ liệu Thô Uncleaned]
-        F1[💬-chung JSON<br/>2,658 msgs / 3.8MB]
-        F2[discord-crawl/*.json<br/>285 files]
+    subgraph DCE_Sidecar [DiscordChatExporter Sidecar]
+        Scheduler[17:30 Daily Sync Task] --> DCECmd[Execute Isolated Subprocess<br/>PATH + DISCORD_TOKEN minimal env]
     end
 
-    subgraph Cleaning_Stage [Giai đoạn Lọc Nhiễu]
-        C1[Lọc tin cụt 'hi', '.', emoji]
-        C2[Gom nhóm theo Thread & Reply Chain]
+    subgraph Atomic_Staging [Atomic Batch Staging]
+        DCECmd --> Staging[.partial Staging Directory]
+        Staging --> Validation{Validate Export Integrity}
+        Validation -->|File hỏng / Invalid JSON| FailFast[Fail-Fast Rollback & Redact Token Stderr]
+        Validation -->|File hợp lệ| BatchCommit[Atomic Transaction Commit]
     end
 
-    subgraph Mining_Stage [Trích xuất Triples]
-        E1[LLM Triple Mining Prompt]
-        E2[Pydantic Validation]
+    subgraph Database_Sync [Database & FTS5 Synchronization]
+        BatchCommit --> SourceMsgs[(source_messages Table)]
+        SourceMsgs -->|SQLite Trigger AI/AD/AU| FTS5[(fts_source_messages Virtual Table)]
+        BatchCommit --> DirectoryRename[Atomic Directory Move: .partial -> ready -> imported]
     end
-
-    subgraph Graph_Storage [Lưu trữ Đồ thị]
-        G1[(User Entity)]
-        G2[(Topic Entity)]
-        G3[(Solution Entity)]
-        G4[(Tool Entity)]
-    end
-
-    F1 & F2 --> C1 --> C2 --> E1 --> E2
-    E2 -->|Triple: User - POSTED -> Topic| G1 & G2
-    E2 -->|Triple: Topic - HAS_SOLUTION -> Solution| G2 & G3
-    E2 -->|Triple: Solution - MENTIONS -> Tool| G3 & G4
 ```
