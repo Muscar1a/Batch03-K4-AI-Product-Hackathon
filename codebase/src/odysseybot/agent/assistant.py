@@ -142,8 +142,10 @@ class GroundedAssistant:
         query = state["query"]
         combined_context = state.get("combined_context", "")
         intent = state.get("intent", "LOGISTICS")
+        all_citations = list(state.get("citations", []))
 
         if intent == "CLARIFICATION":
+
             synthesized_text = (
                 "👋 **Bạn có thể đặt câu hỏi cụ thể hơn một chút không?**\n\n"
                 "Câu hỏi hiện tại hơi ngắn hoặc chung chung. Để OdysseyBot có thể tìm đúng thông tin và hỗ trợ bạn tốt nhất, bạn vui lòng cho mình biết rõ hơn nhé:\n"
