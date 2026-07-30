@@ -13,6 +13,39 @@ from odysseybot.agent.assistant import GroundedAssistant
 from odysseybot.knowledge.db import init_db_sync
 
 
+async def send_split_message(destination, text: str, citations_lines: list[str] = None):
+    """Splits and sends long messages safely within Discord's 2000 character limit."""
+    chunk_size = 1900
+    
+    # Send main response text in chunks if longer than 1900 chars
+    if len(text) <= chunk_size:
+        main_chunks = [text]
+    else:
+        main_chunks = []
+        for i in range(0, len(text), chunk_size):
+            main_chunks.append(text[i:i + chunk_size])
+
+    for chunk in main_chunks:
+        await destination.send(chunk)
+
+    # Send citations header & lines in separate chunk
+    if citations_lines:
+        citations_text = "\n\n📌 **Trích dẫn minh bạch (Link nguồn Discord)**:\n" + "\n".join(citations_lines)
+        if len(citations_text) <= chunk_size:
+            await destination.send(citations_text)
+        else:
+            await destination.send("\n\n📌 **Trích dẫn minh bạch (Link nguồn Discord)**:")
+            cite_chunk = ""
+            for line in citations_lines:
+                if len(cite_chunk) + len(line) + 1 > chunk_size:
+                    await destination.send(cite_chunk)
+                    cite_chunk = line
+                else:
+                    cite_chunk += ("\n" + line if cite_chunk else line)
+            if cite_chunk:
+                await destination.send(cite_chunk)
+
+
 def main():
     # Initialize database tables
     init_db_sync(settings.DATABASE_PATH)
@@ -53,12 +86,8 @@ def main():
             )
             answer = await assistant.answer(req)
 
-        response_msg = answer.text
-        if answer.citations:
-            citation_lines = [f"- [{c.title}]({c.url}) *(Nguồn: {c.authority})*" for c in answer.citations]
-            response_msg += "\n\n📌 **Trích dẫn minh bạch**:\n" + "\n".join(citation_lines)
-
-        await ctx.send(response_msg)
+        citation_lines = [f"- [{c.title}]({c.url}) *(Nguồn: {c.authority})*" for c in answer.citations] if answer.citations else None
+        await send_split_message(ctx, answer.text, citation_lines)
 
     @bot.event
     async def on_message(message: discord.Message):
@@ -85,17 +114,11 @@ def main():
                     )
                     answer = await assistant.answer(req)
 
-                response_msg = answer.text
-                if answer.citations:
-                    citation_lines = [f"- [{c.title}]({c.url}) *(Nguồn: {c.authority})*" for c in answer.citations]
-                    response_msg += "\n\n📌 **Trích dẫn minh bạch (Link nguồn Discord)**:\n" + "\n".join(citation_lines)
-
-                await message.channel.send(response_msg)
+                citation_lines = [f"- [{c.title}]({c.url}) *(Nguồn: {c.authority})*" for c in answer.citations] if answer.citations else None
+                await send_split_message(message.channel, answer.text, citation_lines)
                 return
 
         await bot.process_commands(message)
-
-
 
     bot.run(token)
 
