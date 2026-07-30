@@ -76,7 +76,8 @@ class KnowledgeRetriever:
                                         title=cname,
                                         url=f"<#{channel_id}>",
                                         excerpt=content[:600],
-                                        authority=f"bởi {author_name} (https://discord.com/channels/{target_guild}/{channel_id}/{msg_id})",
+                                        authority=f"bởi {author_name} - https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
+
                                         source_timestamp=ts_dt,
                                     )
                                 )
