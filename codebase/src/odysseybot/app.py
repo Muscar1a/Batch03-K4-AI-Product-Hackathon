@@ -84,10 +84,17 @@ def main():
                         text=query,
                     )
                     answer = await assistant.answer(req)
-                await message.channel.send(answer.text)
+
+                response_msg = answer.text
+                if answer.citations:
+                    citation_lines = [f"- [{c.title}]({c.url}) *(Nguồn: {c.authority})*" for c in answer.citations]
+                    response_msg += "\n\n📌 **Trích dẫn minh bạch (Link nguồn Discord)**:\n" + "\n".join(citation_lines)
+
+                await message.channel.send(response_msg)
                 return
 
         await bot.process_commands(message)
+
 
 
     bot.run(token)
