@@ -76,12 +76,13 @@ class KnowledgeRetriever:
                                     Citation(
                                         source_type="STAFF_DISCORD",
                                         title=cname,
-                                        url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
+                                        url=f"<#{channel_id}>",
                                         excerpt=content[:600],
-                                        authority=f"bởi {author_name}",
+                                        authority=f"bởi {author_name} (https://discord.com/channels/{target_guild}/{channel_id}/{msg_id})",
                                         source_timestamp=ts_dt,
                                     )
                                 )
+
                     if len(citations) >= limit:
                         break
 
