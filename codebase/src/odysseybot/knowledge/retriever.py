@@ -46,23 +46,22 @@ class KnowledgeRetriever:
         seen_ids = set()
 
         if self.db_path.exists() and clean_query:
-            clean_text = re.sub(r"[^\w\s]", " ", clean_query).strip()
-            phrase_keywords = [clean_text] if clean_text else []
-            if words:
-                phrase_keywords.append(" ".join(words))
-
             async with aiosqlite.connect(self.db_path) as db:
-                for p_kw in phrase_keywords:
-                    phrase = f"%{p_kw}%"
+                # Priority 1: Match sub-keywords in content or channel_name, prioritizing longer/richer content
+                search_terms = [" ".join(words)] + sorted(words, key=len, reverse=True)
+                for term in search_terms:
+                    if not term or len(term) < 2:
+                        continue
+                    pattern = f"%{term}%"
                     async with db.execute(
                         """
                         SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
                         FROM source_messages sm
-                        WHERE sm.content LIKE ? OR sm.channel_name LIKE ?
-                        ORDER BY sm.timestamp DESC
+                        WHERE (sm.content LIKE ? OR sm.channel_name LIKE ?) AND LENGTH(sm.content) > 30
+                        ORDER BY LENGTH(sm.content) DESC, sm.timestamp DESC
                         LIMIT ?;
                         """,
-                        (phrase, phrase, limit)
+                        (pattern, pattern, limit - len(citations))
                     ) as cursor:
                         async for row in cursor:
                             msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp = row
@@ -70,7 +69,6 @@ class KnowledgeRetriever:
                                 seen_ids.add(msg_id)
                                 ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
                                 target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
-                                # Clean channel name to produce pure #channel-name
                                 cname = channel_name.strip() if channel_name else "kênh"
                                 if not cname.startswith("#"):
                                     cname = f"#{cname}"
@@ -79,48 +77,12 @@ class KnowledgeRetriever:
                                         source_type="STAFF_DISCORD",
                                         title=cname,
                                         url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
-                                        excerpt=content[:450],
+                                        excerpt=content[:600],
                                         authority=f"bởi {author_name}",
                                         source_timestamp=ts_dt,
                                     )
                                 )
-
-                # If specific matching phrase found, do NOT include fuzzy keyword noise
-                if not citations and words:
-                    for kw in sorted(words, key=len, reverse=True):
-                        if len(kw) < 4:
-                            continue
-                        like_pattern = f"%{kw}%"
-                        async with db.execute(
-                            """
-                            SELECT sm.id, sm.guild_id, sm.channel_id, sm.content, sm.author_name, sm.channel_name, sm.timestamp
-                            FROM source_messages sm
-                            WHERE sm.content LIKE ?
-                            ORDER BY sm.timestamp DESC
-                            LIMIT ?;
-                            """,
-                            (like_pattern, limit)
-                        ) as cursor:
-                            async for row in cursor:
-                                msg_id, guild_id, channel_id, content, author_name, channel_name, timestamp = row
-                                if msg_id not in seen_ids and kw.lower() in content.lower():
-                                    seen_ids.add(msg_id)
-                                    ts_dt = datetime.fromisoformat(timestamp) if timestamp else None
-                                    target_guild = guild_id or settings.DCE_SOURCE_GUILD_ID or "1526532830627102781"
-                                    cname = channel_name.strip() if channel_name else "kênh"
-                                    if not cname.startswith("#"):
-                                        cname = f"#{cname}"
-                                    citations.append(
-                                        Citation(
-                                            source_type="STAFF_DISCORD",
-                                            title=cname,
-                                            url=f"https://discord.com/channels/{target_guild}/{channel_id}/{msg_id}",
-                                            excerpt=content[:450],
-                                            authority=f"bởi {author_name}",
-                                            source_timestamp=ts_dt,
-                                        )
-                                    )
-                        if citations:
-                            break
+                    if len(citations) >= limit:
+                        break
 
         return citations
