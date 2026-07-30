@@ -107,5 +107,6 @@ def load_and_clean_json_file(file_path: Path) -> Tuple[List[Dict[str, Any]], Dic
     for m in cleaned_msgs:
         m["_channel_name"] = channel_info.get("name", "")
         m["_category"] = channel_info.get("category", "")
+        m["_file_name"] = file_path.name
 
     return cleaned_msgs, metadata
