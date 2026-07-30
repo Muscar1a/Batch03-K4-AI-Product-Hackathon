@@ -1,5 +1,6 @@
-"""Compatibility entrypoint for the production memory store."""
+"""Compatibility entrypoint for the memory store."""
 
-from src.graph_db.memory_store import MemoryStore, MemoryStoreCorruptionError
+from codebase.src.graph_db.memory_store import MemoryStore, MemoryStoreCorruptionError
 
 __all__ = ["MemoryStore", "MemoryStoreCorruptionError"]
+
