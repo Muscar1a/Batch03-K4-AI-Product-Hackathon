@@ -136,12 +136,6 @@ Loại: [x] Tối ưu tính năng có sẵn  [ ] Tính năng mới
     * *Nhiệm vụ Non-tech (1/3)*: Phụ trách phần §6, §7 & §9 trong `spec.md` (4 đường đi trải nghiệm, Quality bar, Golden set, Changelog) + Soạn Slide 6 trang & chuẩn bị kịch bản Demo.
 
 
-* **Willing users (3 học viên sẵn sàng thử)**:
-  1. Nguyễn Quang Huy (G13-T015)
-  2. Nguyễn Duy Bách (G18-T058)
-  3. Nguyễn Tuấn Phong (T071)
-
-
 ---
 
 ## §9. Changelog

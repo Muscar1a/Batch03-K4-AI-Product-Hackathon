@@ -1,7 +1,7 @@
 # Reflection Cá Nhân — Thành viên 1
 
-- **Họ và tên**: 
-- **Mã học viên**: 
+- **Họ và tên**: Nguyễn Thành An
+- **Mã học viên**: 2A202601017
 - **Vai trò trong nhóm**: Data Engine & Triples Mining Engineer
 
 ---
